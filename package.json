@@ -1,0 +1,29 @@
+{
+  "name": "banco-uno",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "esbuild web/src/main.js --bundle --format=esm --minify --sourcemap --outfile=web/dist/app.js",
+    "dev": "npm run build && node server/index.js",
+    "start": "node server/index.js",
+    "test": "node test/compile.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@codemirror/lang-cpp": "^6.0.2",
+    "@codemirror/language": "^6.10.3",
+    "@codemirror/lint": "^6.8.1",
+    "@codemirror/state": "^6.4.1",
+    "@codemirror/view": "^6.34.1",
+    "avr8js": "^0.21.1",
+    "codemirror": "^6.0.1",
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  },
+  "type": "module"
+}
