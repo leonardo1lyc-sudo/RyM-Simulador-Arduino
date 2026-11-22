@@ -16,8 +16,8 @@ RUN sh scripts/setup-vendor.sh && rm -rf vendor/*/.git && apt-get purge -y git &
 COPY package.json ./
 COPY server ./server
 COPY --from=build /app/web ./web
-RUN rm -rf web/src && useradd -m banco && mkdir -p /tmp/banco-uno-cache && chown banco /tmp/banco-uno-cache
-USER banco
+RUN rm -rf web/src && mkdir -p /tmp/banco-uno-cache && chown node /tmp/banco-uno-cache
+USER node
 ENV PORT=8080 BANCO_CACHE=/tmp/banco-uno-cache NODE_ENV=production
 EXPOSE 8080
 HEALTHCHECK CMD node -e "fetch('http://localhost:'+process.env.PORT+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

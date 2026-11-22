@@ -1,0 +1,31 @@
+# Publica el simulador en un Space de Hugging Face (gratis, con Docker) en cada push a main.
+# Configuración en GitHub → Settings → Secrets and variables → Actions:
+#   Secret   HF_TOKEN  token de Hugging Face con permiso de escritura
+#   Variable HF_SPACE  usuario/nombre-del-space, por ejemplo leonardo/banco-uno
+name: Publicar en Hugging Face
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ vars.HF_SPACE != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar el Space
+        run: |
+          rm -rf .git .github
+          { printf -- '---\ntitle: Banco Uno\nemoji: 🔌\ncolorFrom: green\ncolorTo: blue\nsdk: docker\napp_port: 8080\npinned: false\n---\n\n'; cat README.md; } > README.tmp && mv README.tmp README.md
+      - name: Subir al Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ vars.HF_SPACE }}
+        run: |
+          git init -q -b main
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -q -m "Publicar ${GITHUB_SHA::7}"
+          HF_USER="${HF_SPACE%%/*}"
+          git push -f "https://${HF_USER}:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" main
