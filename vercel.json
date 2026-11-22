@@ -11,6 +11,10 @@
     "api/libraries.js": {
       "maxDuration": 30,
       "includeFiles": "{vendor,server}/**"
+    },
+    "api/health.js": {
+      "maxDuration": 60,
+      "includeFiles": "{toolchain,vendor,.vercel-cache,server}/**"
     }
   }
 }
