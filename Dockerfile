@@ -8,11 +8,11 @@ RUN npm run build
 
 FROM node:20-bookworm-slim
 RUN apt-get update \
- && apt-get install -y --no-install-recommends gcc-avr avr-libc binutils-avr git ca-certificates \
+ && apt-get install -y --no-install-recommends gcc-avr avr-libc binutils-avr curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY scripts ./scripts
-RUN sh scripts/setup-vendor.sh && rm -rf vendor/*/.git && apt-get purge -y git && apt-get autoremove -y
+RUN sh scripts/setup-vendor.sh && apt-get purge -y curl && apt-get autoremove -y
 COPY package.json ./
 COPY server ./server
 COPY --from=build /app/web ./web

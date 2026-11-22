@@ -1,9 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
   "buildCommand": "sh scripts/vercel-build.sh",
   "outputDirectory": "web",
   "functions": {
-    "api/compile.js": { "maxDuration": 60, "includeFiles": "{toolchain,vendor,.vercel-cache,server}/**" },
-    "api/libraries.js": { "maxDuration": 30, "includeFiles": "{vendor,server}/**" }
+    "api/compile.js": {
+      "maxDuration": 60,
+      "includeFiles": "{toolchain,vendor,.vercel-cache,server}/**"
+    },
+    "api/libraries.js": {
+      "maxDuration": 30,
+      "includeFiles": "{vendor,server}/**"
+    }
   }
 }
