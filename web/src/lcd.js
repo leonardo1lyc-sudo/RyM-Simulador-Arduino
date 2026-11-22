@@ -78,6 +78,7 @@ export class I2CBus {
   connectToSlave(addr, write){
     this.current = this.devices.find(d => d.address === addr && d.ready()) || null;
     this.writing = write;
+    if (this.current && this.current.begin) this.current.begin(write);
     this.twi.completeConnect(!!this.current);
   }
   writeByte(v){ if (this.current) this.current.write(v); this.twi.completeWrite(!!this.current); }

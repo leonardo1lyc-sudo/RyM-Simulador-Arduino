@@ -253,4 +253,425 @@ void loop() {
 }
 `,
   },
+
+  ultrasonido: {
+    title: 'Ultrasonido HC-SR04 (distancia)',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'sr04', x: 800, y: 120, rot: 0, name: 'US1', props: { cm: 30 } }],
+        wires: [
+          { id: 10, a: 'C1:VCC', b: 'B:5V', pts: [[779, 260], [620, 260], [620, 640], [282.8, 640]], color: RED },
+          { id: 11, a: 'C1:TRIG', b: 'B:D9', pts: [[793, 200], [296.8, 200]], color: SIG[0] },
+          { id: 12, a: 'C1:ECHO', b: 'B:D10', pts: [[807, 190], [279.2, 190]], color: SIG[1] },
+          { id: 13, a: 'C1:GND', b: 'B:GND.2', pts: [[821, 275], [640, 275], [640, 660], [300.4, 660]], color: GND },
+        ],
+        counters: { sr04: 1 },
+      };
+    },
+    code: `// Sensor ultrasónico HC-SR04
+// Mueve el control "Distancia al objeto" del sensor y mira el monitor serie.
+
+const int TRIG = 9;
+const int ECHO = 10;
+
+void setup() {
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  digitalWrite(TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG, HIGH);      // pulso de 10 µs
+  delayMicroseconds(10);
+  digitalWrite(TRIG, LOW);
+
+  long us = pulseIn(ECHO, HIGH, 40000UL);  // duración del eco
+  float cm = us / 58.0;
+
+  Serial.print("Distancia: ");
+  Serial.print(cm, 1);
+  Serial.println(" cm");
+  delay(300);
+}
+`,
+  },
+  dht: {
+    title: 'Temperatura y humedad DHT22',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'dht', x: 760, y: 110, rot: 0, name: 'DHT1', props: { model: 'DHT22', temp: 24, hum: 55 } }],
+        wires: [
+          { id: 10, a: 'C1:VCC', b: 'B:5V', pts: [[746, 260], [620, 260], [620, 640], [282.8, 640]], color: RED },
+          { id: 11, a: 'C1:DATA', b: 'B:D2', pts: [[760, 190], [428.8, 190]], color: SIG[0] },
+          { id: 12, a: 'C1:GND', b: 'B:GND.2', pts: [[774, 275], [640, 275], [640, 660], [300.4, 660]], color: GND },
+        ],
+        counters: { dht: 1 },
+      };
+    },
+    code: `// Sensor DHT22 con la librería "DHT sensor library" de Adafruit (incluida)
+// Cambia la temperatura y la humedad en el panel del sensor.
+#include <DHT.h>
+
+DHT dht(2, DHT22);   // pin de datos, modelo (DHT11 o DHT22)
+
+void setup() {
+  Serial.begin(9600);
+  dht.begin();
+}
+
+void loop() {
+  delay(2000);                     // el DHT22 mide cada 2 s
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  if (isnan(h) || isnan(t)) {
+    Serial.println("Error al leer el sensor");
+    return;
+  }
+  Serial.print("Temperatura: ");
+  Serial.print(t, 1);
+  Serial.print(" C   Humedad: ");
+  Serial.print(h, 1);
+  Serial.println(" %");
+}
+`,
+  },
+  pir: {
+    title: 'Sensor de movimiento PIR',
+    build(){
+      const c = ledOnPin('D13', 'verde');
+      c.comps.push({ id: 3, type: 'pir', x: 900, y: 330, rot: 0, name: 'PIR1', props: { hold: 3 } });
+      c.wires.push({ id: 13, a: 'C3:VCC', b: 'B:5V', pts: [[886, 400], [886, 640], [282.8, 640]], color: RED });
+      c.wires.push({ id: 14, a: 'C3:OUT', b: 'B:D2', pts: [[900, 420], [660, 420], [660, 190], [428.8, 190]], color: SIG[1] });
+      c.wires.push({ id: 15, a: 'C3:GND', b: 'B:GND.2', pts: [[914, 410], [930, 410], [930, 660], [300.4, 660]], color: GND });
+      return { ...c, counters: { res: 1, led: 1, pir: 1 } };
+    },
+    code: `// Sensor PIR: haz clic en la cúpula blanca para simular movimiento.
+const int PIR = 2;
+const int LED = 13;
+
+void setup() {
+  pinMode(PIR, INPUT);
+  pinMode(LED, OUTPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  static int antes = LOW;
+  int ahora = digitalRead(PIR);
+  digitalWrite(LED, ahora);
+  if (ahora != antes) {
+    Serial.println(ahora == HIGH ? "¡Movimiento!" : "Sin movimiento");
+    antes = ahora;
+  }
+}
+`,
+  },
+  joystick: {
+    title: 'Joystick KY-023',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'joy', x: 820, y: 400, rot: 0, name: 'JOY1', props: { x: 0, y: 0, pressed: false } }],
+        wires: [
+          { id: 10, a: 'C1:GND', b: 'B:GND.2', pts: [[700, 372], [700, 660], [300.4, 660]], color: GND },
+          { id: 11, a: 'C1:V5', b: 'B:5V', pts: [[690, 386], [690, 640], [282.8, 640]], color: RED },
+          { id: 12, a: 'C1:VRx', b: 'B:A0', pts: [[680, 400], [680, 620], [363.2, 620]], color: SIG[2] },
+          { id: 13, a: 'C1:VRy', b: 'B:A1', pts: [[670, 414], [670, 610], [380.8, 610]], color: SIG[1] },
+          { id: 14, a: 'C1:SW', b: 'B:D2', pts: [[660, 428], [660, 190], [428.8, 190]], color: SIG[0] },
+        ],
+        counters: { joy: 1 },
+      };
+    },
+    code: `// Joystick: arrástralo con el ratón. Clic en el centro = pulsador.
+const int EJE_X = A0;
+const int EJE_Y = A1;
+const int BOTON = 2;
+
+void setup() {
+  pinMode(BOTON, INPUT_PULLUP);
+  Serial.begin(9600);
+}
+
+void loop() {
+  int x = analogRead(EJE_X);   // 0..1023, centro ≈ 512
+  int y = analogRead(EJE_Y);
+  bool pulsado = digitalRead(BOTON) == LOW;
+  Serial.print("X=");
+  Serial.print(x);
+  Serial.print("  Y=");
+  Serial.print(y);
+  Serial.println(pulsado ? "  [pulsado]" : "");
+  delay(150);
+}
+`,
+  },
+  alarma: {
+    title: 'Alarma de llama y gas',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'flame', x: 720, y: 360, rot: 0, name: 'FLM1', props: { level: 0, threshold: 0.5 } },
+          { id: 2, type: 'gas', x: 900, y: 360, rot: 0, name: 'GAS1', props: { ppm: 300, threshold: 1000 } },
+          { id: 3, type: 'buzzer', x: 820, y: 110, rot: 0, name: 'BZ1', props: {} },
+        ],
+        wires: [
+          { id: 10, a: 'C1:AO', b: 'B:A0', pts: [[699, 620], [363.2, 620]], color: SIG[2] },
+          { id: 11, a: 'C1:GND', b: 'B:GND.2', pts: [[713, 660], [300.4, 660]], color: GND },
+          { id: 12, a: 'C1:VCC', b: 'B:5V', pts: [[727, 640], [282.8, 640]], color: RED },
+          { id: 13, a: 'C2:VCC', b: 'C1:VCC', pts: [[879, 640]], color: RED },
+          { id: 14, a: 'C2:GND', b: 'C1:GND', pts: [[893, 660]], color: GND },
+          { id: 15, a: 'C2:AO', b: 'B:A1', pts: [[921, 600], [380.8, 600]], color: SIG[1] },
+          { id: 16, a: 'C3:p', b: 'B:D8', pts: [[810, 180], [314.4, 180]], color: SIG[0] },
+          { id: 17, a: 'C3:n', b: 'B:GND.1', pts: [[830, 170], [207.6, 170]], color: GND },
+        ],
+        counters: { flame: 1, gas: 1, buzzer: 1 },
+      };
+    },
+    code: `// Alarma: suena si hay llama o mucho gas.
+// Sube la "Intensidad de la llama" o la "Concentración de gas" en sus paneles.
+const int LLAMA = A0;   // baja cuando hay llama
+const int GAS = A1;     // sube con el gas
+const int ZUMBADOR = 8;
+
+void setup() {
+  Serial.begin(9600);
+}
+
+void loop() {
+  int llama = analogRead(LLAMA);
+  int gas = analogRead(GAS);
+  bool alarma = llama < 400 || gas > 500;
+  if (alarma) tone(ZUMBADOR, 1500); else noTone(ZUMBADOR);
+  Serial.print("llama=");
+  Serial.print(llama);
+  Serial.print("  gas=");
+  Serial.print(gas);
+  Serial.println(alarma ? "  ALARMA" : "");
+  delay(250);
+}
+`,
+  },
+  rele: {
+    title: 'Módulo relé con lámpara a batería',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'relay', x: 760, y: 130, rot: 0, name: 'RELE1', props: { trigger: 'low' } },
+          { id: 2, type: 'battery', x: 1010, y: 420, rot: 0, name: 'BAT1', props: { volts: 9 } },
+          { id: 3, type: 'res', x: 900, y: 290, rot: 0, name: 'R1', props: { ohms: 470 } },
+          { id: 4, type: 'led', x: 900, y: 400, rot: 0, name: 'LED1', props: { color: 'amarillo' } },
+        ],
+        wires: [
+          { id: 10, a: 'C1:VCC', b: 'B:5V', pts: [[660, 116], [640, 116], [640, 640], [282.8, 640]], color: RED },
+          { id: 11, a: 'C1:GND', b: 'B:GND.1', pts: [[650, 130], [650, 170], [207.6, 170]], color: GND },
+          { id: 12, a: 'C1:IN', b: 'B:D7', pts: [[660, 144], [660, 190], [342.8, 190]], color: SIG[0] },
+          { id: 13, a: 'C1:COM', b: 'C2:p', pts: [[998, 130]], color: RED },
+          { id: 14, a: 'C1:NO', b: 'C3:b', pts: [[960, 116], [960, 290]], color: SIG[3] },
+          { id: 15, a: 'C3:a', b: 'C4:a', pts: [[852, 340], [890, 340]], color: SIG[3] },
+          { id: 16, a: 'C4:k', b: 'C2:n', pts: [[910, 470], [1022, 470]], color: GND },
+        ],
+        counters: { relay: 1, battery: 1, res: 1, led: 1 },
+      };
+    },
+    code: `// Módulo relé (activo en LOW): enciende una lámpara alimentada por una batería aparte.
+const int RELE = 7;
+
+void setup() {
+  pinMode(RELE, OUTPUT);
+  digitalWrite(RELE, HIGH);   // apagado (el módulo se activa con LOW)
+  Serial.begin(9600);
+}
+
+void loop() {
+  digitalWrite(RELE, LOW);
+  Serial.println("Relé activado: lámpara encendida");
+  delay(1500);
+  digitalWrite(RELE, HIGH);
+  Serial.println("Relé en reposo: lámpara apagada");
+  delay(1500);
+}
+`,
+  },
+  motor: {
+    title: 'Motor DC con driver L298N',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'l298n', x: 830, y: 300, rot: 0, name: 'DRV1', props: { jumperA: false, jumperB: true } },
+          { id: 2, type: 'motor', x: 680, y: 110, rot: 0, name: 'M1', props: {} },
+          { id: 3, type: 'battery', x: 1030, y: 110, rot: 0, name: 'BAT1', props: { volts: 9 } },
+          { id: 4, type: 'pot', x: 1000, y: 470, rot: 0, name: 'POT1', props: { ohms: 10000, pos: 0.7 } },
+        ],
+        wires: [
+          { id: 10, a: 'C1:OUT1', b: 'C2:p', pts: [[700, 280], [600, 280], [600, 100]], color: SIG[3] },
+          { id: 11, a: 'C1:OUT2', b: 'C2:n', pts: [[700, 302], [590, 302], [590, 120]], color: SIG[4] },
+          { id: 12, a: 'C3:p', b: 'C1:VS', pts: [[1018, 40], [764, 40], [764, 420]], color: RED },
+          { id: 13, a: 'C3:n', b: 'C1:GND', pts: [[1042, 30], [780, 30], [780, 430]], color: GND },
+          { id: 14, a: 'C1:GND', b: 'B:GND.2', pts: [[780, 660], [300.4, 660]], color: GND },
+          { id: 15, a: 'C1:ENA', b: 'B:D5', pts: [[820, 610], [610, 610], [610, 180], [377.6, 180]], color: SIG[0] },
+          { id: 16, a: 'C1:IN1', b: 'B:D7', pts: [[834, 600], [620, 600], [620, 190], [342.8, 190]], color: SIG[1] },
+          { id: 17, a: 'C1:IN2', b: 'B:D8', pts: [[848, 590], [630, 590], [630, 200], [314.4, 200]], color: SIG[2] },
+          { id: 18, a: 'C4:p1', b: 'B:5V', pts: [[980, 640], [282.8, 640]], color: RED },
+          { id: 19, a: 'C4:w', b: 'B:A0', pts: [[1000, 650], [363.2, 650]], color: SIG[2] },
+          { id: 20, a: 'C4:p3', b: 'B:GND.3', pts: [[1020, 670], [318, 670]], color: GND },
+        ],
+        counters: { l298n: 1, motor: 1, battery: 1, pot: 1 },
+      };
+    },
+    code: `// Motor DC con L298N: el potenciómetro elige velocidad y sentido.
+// Mitad izquierda = un sentido, mitad derecha = el otro, centro = detenido.
+const int ENA = 5;   // PWM (velocidad)
+const int IN1 = 7;
+const int IN2 = 8;
+
+void setup() {
+  pinMode(ENA, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  int v = analogRead(A0) - 512;          // -512..511
+  int velocidad = constrain(abs(v) / 2, 0, 255);
+  digitalWrite(IN1, v > 0 ? HIGH : LOW);
+  digitalWrite(IN2, v < 0 ? HIGH : LOW);
+  analogWrite(ENA, abs(v) < 40 ? 0 : velocidad);
+  Serial.print("velocidad: ");
+  Serial.println(v > 0 ? velocidad : -velocidad);
+  delay(200);
+}
+`,
+  },
+  oled: {
+    title: 'Pantalla OLED SSD1306 (I2C)',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'oled', x: 820, y: 400, rot: 0, name: 'OLED1', props: { address: 0x3C } },
+          { id: 2, type: 'pot', x: 1010, y: 150, rot: 0, name: 'POT1', props: { ohms: 10000, pos: 0.4 } },
+        ],
+        wires: [
+          { id: 10, a: 'C1:GND', b: 'B:GND.2', pts: [[799, 320], [700, 320], [700, 660], [300.4, 660]], color: GND },
+          { id: 11, a: 'C1:VCC', b: 'B:5V', pts: [[813, 310], [690, 310], [690, 640], [282.8, 640]], color: RED },
+          { id: 12, a: 'C1:SCL', b: 'B:A5', pts: [[827, 300], [680, 300], [680, 620], [433.6, 620]], color: SIG[1] },
+          { id: 13, a: 'C1:SDA', b: 'B:A4', pts: [[841, 290], [670, 290], [670, 610], [416, 610]], color: SIG[2] },
+          { id: 14, a: 'C2:p1', b: 'B:5V', pts: [[990, 230], [990, 640]], color: RED },
+          { id: 15, a: 'C2:w', b: 'B:A0', pts: [[1010, 240], [1010, 650], [363.2, 650]], color: SIG[0] },
+          { id: 16, a: 'C2:p3', b: 'B:GND.3', pts: [[1030, 250], [1030, 670], [318, 670]], color: GND },
+        ],
+        counters: { oled: 1, pot: 1 },
+      };
+    },
+    code: `// OLED 128x64 con Adafruit SSD1306 + Adafruit GFX (incluidas)
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+Adafruit_SSD1306 pantalla(128, 64, &Wire, -1);
+
+void setup() {
+  Serial.begin(9600);
+  if (!pantalla.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("No se encontró la pantalla");
+    while (true) {}
+  }
+}
+
+void loop() {
+  int valor = analogRead(A0);
+  pantalla.clearDisplay();
+  pantalla.setTextColor(SSD1306_WHITE);
+  pantalla.setTextSize(1);
+  pantalla.setCursor(0, 0);
+  pantalla.println("Banco Uno");
+  pantalla.setTextSize(2);
+  pantalla.setCursor(0, 18);
+  pantalla.print("A0: ");
+  pantalla.println(valor);
+  pantalla.drawRect(0, 46, 128, 14, SSD1306_WHITE);
+  pantalla.fillRect(2, 48, map(valor, 0, 1023, 0, 124), 10, SSD1306_WHITE);
+  pantalla.display();
+  delay(100);
+}
+`,
+  },
+  matriz: {
+    title: 'Matriz LED 8×8 MAX7219',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'max7219', x: 880, y: 380, rot: 0, name: 'MTX1', props: {} }],
+        wires: [
+          { id: 10, a: 'C1:VCC', b: 'B:5V', pts: [[700, 352], [700, 640], [282.8, 640]], color: RED },
+          { id: 11, a: 'C1:GND', b: 'B:GND.2', pts: [[690, 366], [690, 660], [300.4, 660]], color: GND },
+          { id: 12, a: 'C1:DIN', b: 'B:D12', pts: [[680, 380], [680, 180], [261.6, 180]], color: SIG[0] },
+          { id: 13, a: 'C1:CS', b: 'B:D10', pts: [[670, 394], [670, 190], [296.8, 190]], color: SIG[1] },
+          { id: 14, a: 'C1:CLK', b: 'B:D11', pts: [[660, 408], [660, 200], [279.2, 200]], color: SIG[2] },
+        ],
+        counters: { max7219: 1 },
+      };
+    },
+    code: `// Matriz 8x8 con MAX7219 y la librería LedControl (incluida)
+#include <LedControl.h>
+
+LedControl matriz(12, 11, 10, 1);   // DIN, CLK, CS, cantidad de módulos
+
+const byte CARA[8] = {
+  B00111100, B01000010, B10100101, B10000001,
+  B10100101, B10011001, B01000010, B00111100
+};
+
+void setup() {
+  matriz.shutdown(0, false);   // sale del modo de bajo consumo
+  matriz.setIntensity(0, 6);
+  matriz.clearDisplay(0);
+}
+
+void loop() {
+  for (int f = 0; f < 8; f++) matriz.setRow(0, f, CARA[f]);
+  delay(1500);
+  matriz.clearDisplay(0);
+  for (int f = 0; f < 8; f++) {
+    for (int c = 0; c < 8; c++) { matriz.setLed(0, f, c, true); delay(20); }
+  }
+  delay(500);
+}
+`,
+  },
+  bluetooth: {
+    title: 'Bluetooth HC-05 (control desde el celular)',
+    build(){
+      const c = ledOnPin('D13', 'azul');
+      c.comps.push({ id: 3, type: 'hc05', x: 900, y: 360, rot: 0, name: 'BT1', props: { baud: 9600 } });
+      c.wires.push({ id: 13, a: 'C3:VCC', b: 'B:5V', pts: [[879, 640], [282.8, 640]], color: RED });
+      c.wires.push({ id: 14, a: 'C3:GND', b: 'B:GND.2', pts: [[893, 660], [300.4, 660]], color: GND });
+      c.wires.push({ id: 15, a: 'C3:TXD', b: 'B:D10', pts: [[907, 450], [650, 450], [650, 190], [296.8, 190]], color: SIG[1] });
+      c.wires.push({ id: 16, a: 'C3:RXD', b: 'B:D11', pts: [[921, 460], [640, 460], [640, 200], [279.2, 200]], color: SIG[2] });
+      return { ...c, counters: { res: 1, led: 1, hc05: 1 } };
+    },
+    code: `// HC-05 con SoftwareSerial: escribe en el panel "Celular (Bluetooth)".
+// "1" enciende el LED, "0" lo apaga; el resto se repite en el monitor serie.
+#include <SoftwareSerial.h>
+
+SoftwareSerial bt(10, 11);   // RX (va a TXD del módulo), TX (va a RXD)
+const int LED = 13;
+
+void setup() {
+  pinMode(LED, OUTPUT);
+  Serial.begin(9600);
+  bt.begin(9600);
+  bt.println("Hola desde el Arduino. Envia 1 o 0.");
+}
+
+void loop() {
+  if (bt.available()) {
+    char c = bt.read();
+    if (c == '1') { digitalWrite(LED, HIGH); bt.println("LED encendido"); }
+    else if (c == '0') { digitalWrite(LED, LOW); bt.println("LED apagado"); }
+    Serial.write(c);
+  }
+}
+`,
+  },
 };

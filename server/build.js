@@ -41,14 +41,17 @@ async function walk(dir, recursive){
 }
 
 /* ---------- caché de objetos compilados ---------- */
-async function compileObj(src, includes, label){
+async function compileObj(src, includes, label, ctx){
   const ext = path.extname(src);
   const flags = ext === '.c' ? CFLAGS : ext === '.S' ? SFLAGS : CXXFLAGS;
   const tool = ext === '.c' || ext === '.S' ? TOOL('avr-gcc') : TOOL('avr-g++');
   const inc = includes.map(i => '-I' + i);
   // Clave: contenido del fichero + flags + includes (los headers incluidos se cubren con el hash del conjunto de includes)
   const content = await fs.readFile(src);
-  const key = sha([path.basename(tool), flags.join(' '), includes.map(relV).join('|'), label, content.toString('binary')].join('\0'));
+  // ctx: {work, key} para objetos de una compilación concreta: la carpeta temporal se normaliza y
+  // `key` resume las pestañas y librerías del usuario (que pueden influir en las cabeceras).
+  const incKey = includes.map(i => ctx && i.startsWith(ctx.work) ? 'W' + i.slice(ctx.work.length) : relV(i)).join('|');
+  const key = sha([path.basename(tool), flags.join(' '), incKey, label, ctx ? ctx.key : '', content.toString('binary')].join('\0'));
   const obj = path.join(CACHE, 'obj', key + '.o');
   if (fss.existsSync(obj)) return obj;
   if (SEED) { const s = path.join(SEED, 'obj', key + '.o'); if (fss.existsSync(s)) return s; }
@@ -272,8 +275,9 @@ export async function compileSketch({ sketch, files = {}, libraries = [] }){
 
     // compilación
     const objs = []; let log = '';
+    const ctx = { work, key: sha(JSON.stringify([files, libraries])) };
     const tryCompile = async (f, label) => {
-      try { objs.push(await compileObj(f, includes, label)); }
+      try { objs.push(await compileObj(f, includes, label, label === 'sketch' ? null : ctx)); }
       catch (e) { log += (e.stderr || e.message || '') + '\n'; }
     };
     for (const f of (await walk(sketchDir, false)).filter(f => SRC_EXT.has(path.extname(f)) || f.endsWith('.ino.cpp'))) await tryCompile(f, 'sketch');

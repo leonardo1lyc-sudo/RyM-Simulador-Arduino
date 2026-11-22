@@ -1,4 +1,5 @@
 // Definición de componentes: terminales, aspecto (SVG) y modelo eléctrico.
+import { MODULES } from './modules.js';
 export const LED_COLORS = {
   rojo:    { c: '#ff3b30', off: '#8a2a24', vf: 1.8 },
   naranja: { c: '#ff8a1f', off: '#8a4a1a', vf: 1.9 },
@@ -169,14 +170,16 @@ export const TYPES = {
     },
     elec(c, T, E){ E.res(T('VCC'), T('GND'), 5000); E.res(T('SDA'), T('VCC'), 10000); E.res(T('SCL'), T('VCC'), 10000); },
   },
+  ...MODULES,
 };
 
 export const LIBRARY = [
-  { cat: 'Salidas', items: ['led', 'rgb', 'buzzer', 'servo'] },
-  { cat: 'Entradas', items: ['btn', 'sw', 'pot', 'ldr'] },
-  { cat: 'Pantallas', items: ['lcd', 'lcdi2c', { soon: true, name: 'OLED SSD1306' }, { soon: true, name: 'Display 7 seg.' }] },
-  { cat: 'Pasivos', items: ['res', { soon: true, name: 'Condensador' }] },
-  { cat: 'Sensores', items: [{ soon: true, name: 'Ultrasonido HC-SR04' }, { soon: true, name: 'DHT22' }, { soon: true, name: 'Termistor NTC' }, { soon: true, name: 'PIR' }] },
+  { cat: 'Salidas', items: ['led', 'rgb', 'buzzer', 'servo', 'relay', 'motor', 'l298n'] },
+  { cat: 'Entradas', items: ['btn', 'sw', 'pot', 'joy'] },
+  { cat: 'Sensores', items: ['sr04', 'dht', 'pir', 'ldr', 'flame', 'gas'] },
+  { cat: 'Pantallas', items: ['lcd', 'lcdi2c', 'oled', 'max7219', { soon: true, name: 'Display 7 seg.' }] },
+  { cat: 'Comunicación', items: ['hc05'] },
+  { cat: 'Pasivos y energía', items: ['res', 'battery', { soon: true, name: 'Condensador' }] },
 ];
 
 export function icon(type){

@@ -9,6 +9,7 @@ import { tags } from '@lezer/highlight';
 import { Uno, PinState, FREQ } from './emulator.js';
 import { HD44780, PCF8574Lcd, I2CBus } from './lcd.js';
 import { TYPES, LIBRARY, LED_COLORS, RES_VALUES, fmt, fmtOhm, icon, ldrOhms } from './components.js';
+import { SSD1306, oledImage } from './modules.js';
 import { EXAMPLES } from './examples.js';
 import { listLibraries, saveLibrary, deleteLibrary, importZip, importFiles } from './libs.js';
 
@@ -106,7 +107,9 @@ let elecDirty = true;
 function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
   const n = circuit.n; const node = k => circuit.map.get(k);
   const diodeOn = new Map(); let res;
+  let prevV = lastSol && lastSol.ver === circuit.ver && lastSol.V.length === n ? lastSol.V : null;
   for (let iter = 0; iter < 30; iter++) {
+    let usedPrev = false;
     const Gm = Array.from({ length: n }, () => new Float64Array(n)), b = new Float64Array(n), gReal = new Float64Array(n);
     for (let i = 0; i < n; i++) Gm[i][i] += 1e-12;
     const G2 = (i, j, g) => { if (i >= 0) { Gm[i][i] += g; gReal[i] += g; } if (j >= 0) { Gm[j][j] += g; gReal[j] += g; } if (i >= 0 && j >= 0) { Gm[i][j] -= g; Gm[j][i] -= g; } };
@@ -123,7 +126,12 @@ function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
     }
     SRC(node('B:5V'), 5, 0.05); SRC(node('B:IOREF'), 5, 0.05); SRC(node('B:3V3'), 3.3, 0.5); SRC(node('B:RESET'), 5, 10000);
     const diodes = [];
+    const driven = new Map(); for (let p = 0; p < 20; p++) if (pinV[p] !== undefined) { const i = node('B:' + pinName(p)); if (i >= 0 && !driven.has(i)) driven.set(i, pinV[p] / 5); else if (i === -1) driven.set(-1, 0); }
+    const prev = i => { usedPrev = true; return i < 0 || !prevV ? 0 : prevV[i] || 0; };
     const E = {
+      src: (a, g, Vs, R) => { const gg = 1 / Math.max(0.01, R); G2(a, g, gg); if (a >= 0) b[a] += Vs * gg; if (g >= 0) b[g] -= Vs * gg; },
+      prev,
+      level: i => driven.has(i) ? driven.get(i) : i < 0 ? 0 : (prev(i) > 2.5 ? 1 : 0),
       res: (a, bb, R) => G2(a, bb, 1 / Math.max(0.01, R)),
       diode: (id, a, k, vf, ron) => {
         diodes.push({ id, a, k, vf, ron });
@@ -142,8 +150,11 @@ function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
       dI.set(d.id, on ? Math.max(0, (vd - d.vf) / d.ron) : 0);
     }
     const pinI = []; for (let p = 0; p < 20; p++) if (pinV[p] !== undefined) pinI[p] = (pinV[p] - v(node('B:' + pinName(p)))) / 25;
-    res = { V, gReal, dI, pinI, i5V: (5 - v(node('B:5V'))) / 0.05, i3V: (3.3 - v(node('B:3V3'))) / 0.5, v };
-    if (!changed) break;
+    res = { V, gReal, dI, pinI, i5V: (5 - v(node('B:5V'))) / 0.05, i3V: (3.3 - v(node('B:3V3'))) / 0.5, v, ver: circuit.ver };
+    let moved = false;
+    if (usedPrev) { if (!prevV) moved = true; else for (let i = 0; i < n; i++) if (Math.abs(V[i] - prevV[i]) > 1e-3) { moved = true; break; } }
+    prevV = V;
+    if (!changed && !moved) break;
   }
   return res;
 }
@@ -166,7 +177,8 @@ const isFloating = (sol, key) => { const n = circuit.node(key); return n >= 0 &&
 let uno = null, running = false, hexLoaded = null, lastFrame = 0, speed = 1;
 const track = Array.from({ length: 20 }, () => ({ high: 0, edge: 0, toggles: 0 }));
 let frameStart = 0;
-const devices = { servos: [], lcds: [], buzzers: [], i2c: [] };
+const devices = { servos: [], lcds: [], buzzers: [], i2c: [], sim: [] };
+const simDevs = new Map(); // id de componente -> modelo de dispositivo (modules.js)
 const lcdModels = new Map();  // id de componente -> HD44780
 const servoAngles = new Map();
 let bounceQueue = [];
@@ -177,9 +189,22 @@ function pinOfTerm(key){ // pin del Arduino unido a ese terminal (o -1)
   return -1;
 }
 function mapDevices(){
-  devices.servos = []; devices.lcds = []; devices.buzzers = []; devices.i2c = [];
+  devices.servos = []; devices.lcds = []; devices.buzzers = []; devices.i2c = []; devices.sim = [];
+  pinCache.clear();
+  for (const id of [...simDevs.keys()]) if (!state.comps.some(c => c.id === id)) simDevs.delete(id);
   for (const c of state.comps) {
     const T = t => `C${c.id}:${t}`;
+    const def = TYPES[c.type];
+    if (def.device) {
+      let d = simDevs.get(c.id); if (!d || d.c !== c) { d = def.device(c, devApi(c)); d.c = c; if (d.reset) d.reset(); simDevs.set(c.id, d); }
+      devices.sim.push(d);
+    }
+    if (c.type === 'oled') {
+      if (!c._oled) c._oled = new SSD1306(c.props.address);
+      const m = c._oled; m.address = c.props.address;
+      m.ready = () => circuit.node(T('SDA')) === circuit.node('B:A4') && circuit.node(T('SCL')) === circuit.node('B:A5') && devApi(c).powered('VCC', 'GND', 2.8);
+      devices.i2c.push({ c, bp: m });
+    }
     if (c.type === 'servo') devices.servos.push({ c, sig: pinOfTerm(T('sig')), rise: 0 });
     if (c.type === 'buzzer') devices.buzzers.push({ c, pin: pinOfTerm(T('p')) >= 0 ? pinOfTerm(T('p')) : pinOfTerm(T('n')) });
     if (c.type === 'lcd' || c.type === 'lcdi2c') { if (!lcdModels.has(c.id)) lcdModels.set(c.id, new HD44780()); }
@@ -195,6 +220,25 @@ function mapDevices(){
   }
   if (uno && uno.bus) uno.bus.devices = devices.i2c.map(d => d.bp);
 }
+const pinCache = new Map();
+function pinOf(key){ let p = pinCache.get(key); if (p === undefined) { p = pinOfTerm(key); pinCache.set(key, p); } return p; }
+const apiCache = new Map();
+function devApi(c){
+  let a = apiCache.get(c); if (a) return a;
+  const T = t => `C${c.id}:${t}`;
+  a = {
+    pin: t => pinOf(T(t)),
+    powered: (vcc, gnd, min = 4) => !!lastSol && voltage(lastSol, T(vcc)) - voltage(lastSol, T(gnd)) > min,
+    state: p => uno ? uno.state[p] : PinState.Input,
+    now: () => uno ? uno.cycles : 0,
+    schedule: (at, fn) => { if (uno) uno.schedule(at, fn); },
+    drive: () => { elecDirty = true; dispDirty = true; if (uno && running) applyInputs(uno.cycles); },
+    running: () => running && !!uno,
+    serialWrite: bytes => { if (uno) { uno.serialWrite(bytes); rxFlash = performance.now(); } },
+    click: () => playClick(),
+  };
+  apiCache.set(c, a); return a;
+}
 function powered(c){
   const sol = lastSol; if (!sol) return false;
   if (c.type === 'lcdi2c') return voltage(sol, `C${c.id}:VCC`) - voltage(sol, `C${c.id}:GND`) > 4;
@@ -204,6 +248,7 @@ function powered(c){
 }
 
 function onPin(p, s, old, cyc){
+  for (const d of devices.sim) if (d.onPin) d.onPin(p, s, old, cyc);
   const t = track[p];
   if (old === PinState.High) t.high += cyc - t.edge;
   t.edge = cyc; t.toggles++;
@@ -233,9 +278,11 @@ function applyInputs(cyc){
   if (!elecDirty) return;
   elecDirty = false;
   const sol = solve({ pwm: 'inst' }); lastSol = sol;
+  for (const d of devices.sim) if (d.update && d.update(t => voltage(sol, `C${d.c.id}:${t}`))) { elecDirty = true; dispDirty = true; }
   for (let p = 0; p < 20; p++) {
     const key = 'B:' + pinName(p); const v = voltage(sol, key);
-    if (io.pins[p].mode !== 'OUTPUT') {
+    if (io.pins[p].mode === 'OUTPUT') floatWarn.delete(p);
+    else {
       let hi = v > 2.5;
       if (isFloating(sol, key)) { hi = Math.random() < 0.5; if (circuit.wired.has(key)) floatWarn.add(p); }
       else floatWarn.delete(p);
@@ -259,12 +306,15 @@ function startSim(hex){
   track.forEach(t => { t.high = 0; t.edge = 0; t.toggles = 0; });
   mapDevices();
   uno.pinListeners.push(onPin);
-  uno.onSerial = b => { serialBuf += String.fromCharCode(b); txFlash = performance.now(); };
+  const dec = new TextDecoder(); uno.onSerial = b => { serialBuf += dec.decode(new Uint8Array([b]), { stream: true }); txFlash = performance.now(); for (const d of devices.sim) if (d.hwRx && d.hwRx()) d.rx(b); };
+  uno.onSpi = b => { for (const d of devices.sim) if (d.onSpi) d.onSpi(b); return 0xFF; };
+  for (const d of simDevs.values()) if (d.reset) d.reset();
+  for (const c of state.comps) if (c._oled) c._oled.reset();
   floatWarn.clear(); elecDirty = true; frameStart = 0; running = true; speed = 1;
   lastFrame = performance.now();
   setStatus('run');
 }
-function stopSim(){ running = false; uno = null; io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; }); elecDirty = true; setStatus('stop'); stopTone(); }
+function stopSim(){ running = false; uno = null; for (const d of simDevs.values()) if (d.reset) d.reset(); io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; }); elecDirty = true; setStatus('stop'); stopTone(); }
 function setStatus(s, extra){
   const st = $('#status'), run = $('#run');
   st.className = 'chip' + (s === 'run' ? ' on' : s === 'error' ? ' bad' : s === 'busy' ? ' busy' : '');
@@ -301,6 +351,7 @@ function frame(now){
     $('#clock').textContent = `t = ${fmt(uno.cycles / FREQ, 2)} s` + (speed < 0.97 ? ` · ${Math.round(speed * 100)} %` : '');
   }
   if (serialBuf) { serialAppend(serialBuf); serialBuf = ''; }
+  updateBtPanel();
   renderDynamic();
   requestAnimationFrame(frame);
 }
@@ -310,8 +361,12 @@ let dispDirty = true, display = null, lastWarnHTML = '';
 function computeDisplay(){
   if (circuit.ver !== structVer) rebuildCircuit();
   const pwmPins = []; for (let p = 0; p < 20; p++) if (io.pins[p].mode === 'OUTPUT' && io.pins[p].duty != null) pwmPins.push(p);
-  const avg = solve({ pwm: 'avg' });
-  if (!running) lastSol = avg;
+  let avg = solve({ pwm: 'avg' });
+  if (!running) {
+    lastSol = avg;
+    let ch = false; for (const d of devices.sim) if (d.update && d.update(t => voltage(avg, `C${d.c.id}:${t}`))) ch = true;
+    if (ch) { avg = solve({ pwm: 'avg' }); lastSol = avg; }
+  }
   const led = new Map(), peak = new Map();
   let pinI = avg.pinI;
   if (!pwmPins.length) { for (const [id, I] of avg.dI) { led.set(id, I); peak.set(id, I); } }
@@ -359,6 +414,10 @@ function renderDynamic(){
       const on = f > 30 && f < 20000; const w = q(`[data-waves="${c.id}"]`); if (w) w.setAttribute('opacity', on ? 0.5 + 0.5 * Math.sin(now / 60) ** 2 : 0);
       c._freq = on ? f : 0;
     } else if (c.type === 'lcd' || c.type === 'lcdi2c') renderLcd(c, D.sol, warns);
+    else if (c.type === 'oled') renderOled(c, warns, now);
+    else if (c.type === 'max7219') renderMatrix(c, warns);
+    const def = TYPES[c.type];
+    if (def.render) def.render(c, renderCtx(c, D, warns, now));
   }
   const buzz = state.comps.find(c => c.type === 'buzzer' && c._freq);
   if (buzz) playTone(buzz._freq); else stopTone();
@@ -381,6 +440,29 @@ function renderDynamic(){
     el.setAttribute('fill', lvl > 0.02 ? `rgba(255,120,40,${0.3 + 0.7 * lvl})` : '#0c0c0c');
   }
   updateProps(false);
+}
+function renderCtx(c, D, warns, now){
+  const T = t => `C${c.id}:${t}`; const api = devApi(c);
+  return {
+    q, now, running, warn: w => warns.push(w), V: t => voltage(D.sol, T(t)), powered: api.powered,
+    wired: t => circuit.wired.has(T(t)),
+    drivenBy: t => { const p = pinOf(T(t)); return p >= 0 && io.pins[p].mode === 'OUTPUT' ? p : -1; },
+  };
+}
+function renderOled(c, warns, now){
+  const m = c._oled; const img = q(`[data-oled="${c.id}"]`); if (!m || !img) return;
+  const pw = running && devApi(c).powered('VCC', 'GND', 2.8);
+  const key = m.version + '|' + pw;
+  if (img.dataset.key !== key && (!c._oledT || now - c._oledT > 40)) { img.dataset.key = key; c._oledT = now; img.setAttribute('href', oledImage(m, pw)); }
+  if (running && !(m.ready && m.ready())) warns.push(`${c.name}: la pantalla OLED debe ir con SDA a A4, SCL a A5, VCC a 5V y GND a GND.`);
+}
+function renderMatrix(c, warns){
+  const m = c._max; if (!m) return;
+  const pw = running && devApi(c).powered('VCC', 'GND', 4);
+  const key = m.version + '|' + pw; if (c._mxKey === key) return; c._mxKey = key;
+  const op = (0.35 + 0.65 * (m.intensity + 1) / 16).toFixed(2);
+  for (let r = 0; r < 8; r++) for (let k = 0; k < 8; k++) { const el = q(`[data-dot="${c.id}:${r}:${k}"]`); if (el) el.setAttribute('opacity', pw && m.lit(r, k) ? op : 0); }
+  if (running && !pw) warns.push(`${c.name}: sin alimentación. VCC a 5V y GND a GND.`);
 }
 function renderLcd(c, sol, warns){
   const lcd = lcdModels.get(c.id); const txt = q(`[data-lcdtxt="${c.id}"]`), bg = q(`[data-lcdbg="${c.id}"]`); if (!lcd || !txt) return;
@@ -446,6 +528,10 @@ function playTone(f){
     osc.frequency.setTargetAtTime(f, audio.currentTime, 0.01);
   } catch {}
 }
+function playClick(){
+  if (!soundOn) return;
+  try { if (!audio) audio = new AudioContext(); const t = audio.currentTime; const o = audio.createOscillator(), g = audio.createGain(); o.type = 'square'; o.frequency.value = 180; g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.03); o.connect(g).connect(audio.destination); o.start(t); o.stop(t + 0.035); } catch {}
+}
 function stopTone(){ if (osc) { try { osc.stop(); } catch {} osc = null; } }
 $('#sound').onclick = () => { soundOn = !soundOn; $('#sound').setAttribute('aria-pressed', soundOn); $('#sound').textContent = soundOn ? '🔊 Sonido' : '🔇 Sonido'; if (!soundOn) stopTone(); else if (!audio) { try { audio = new AudioContext(); } catch {} } };
 
@@ -507,6 +593,11 @@ function updateProps(force){
     if (c.type === 'btn') h += `<label class="check"><input type="checkbox" id="pLatch" ${c.props.latch ? 'checked' : ''}> Queda pulsado al hacer clic</label><label class="check"><input type="checkbox" id="pBounce" ${c.props.bounce ? 'checked' : ''}> Simular rebote del contacto</label>`;
     if (c.type === 'ldr') h += `<label>Luz ambiente<input type="range" id="pLux" min="0" max="1000" value="${Math.round(Math.log10(c.props.lux + 1) / 5 * 1000)}"></label>`;
     if (c.type === 'lcdi2c') h += `<label>Dirección I2C<select id="pAddr">${[0x27, 0x3F, 0x20, 0x26].map(a => `<option value="${a}" ${a === c.props.address ? 'selected' : ''}>0x${a.toString(16).toUpperCase()}</option>`).join('')}</select></label>`;
+    const def = TYPES[c.type];
+    for (const o of def.options || []) h += `<label>${o.label}<select data-prop="${o.prop}" data-num="${o.num ? 1 : ''}">${o.values.map(([val, lab]) => `<option value="${val}" ${val === c.props[o.prop] ? 'selected' : ''}>${lab}</option>`).join('')}</select></label>`;
+    for (const k of def.controls || []) h += `<label>${k.label} <output data-out="${k.prop}">${ctrlText(k, c.props[k.prop])}</output><input type="range" data-prop="${k.prop}" data-ctl="1" min="${k.min}" max="${k.max}" step="${k.step}" value="${c.props[k.prop]}"></label>`;
+    for (const k of def.checks || []) h += `<label class="check"><input type="checkbox" data-prop="${k.prop}" ${c.props[k.prop] ? 'checked' : ''}> ${k.label}</label>`;
+    if (c.type === 'joy') h += `<label class="check"><input type="checkbox" data-prop="pressed" ${c.props.pressed ? 'checked' : ''}> Pulsador del joystick apretado</label>`;
     h += `<div class="readout" id="pRead"></div><div class="row"><button class="btn small" data-act="rot">⟳ Girar</button><button class="btn small danger" data-act="del">Eliminar</button></div>`;
     box.innerHTML = h; box.hidden = false; propsKey = key;
   }
@@ -523,8 +614,10 @@ function updateProps(force){
   if (c.type === 'servo') txt = `Ángulo: ${Math.round(c._ang ?? 90)}°`;
   if (c.type === 'buzzer') txt = c._freq ? `Sonando a ${Math.round(c._freq)} Hz` : 'En silencio';
   if (c.type === 'lcd' || c.type === 'lcdi2c') { const l = lcdModels.get(c.id); txt = l ? `Modo: ${l.eightBit ? '8' : '4'} bits · ${l.displayOn ? 'pantalla encendida' : 'pantalla apagada'}` : ''; }
+  if (TYPES[c.type].readout) txt = TYPES[c.type].readout(c, t => v(`C${c.id}:${t}`));
   if (r.textContent !== txt) r.textContent = txt;
 }
+function ctrlText(k, v){ return k.pct ? Math.round(v * 100) + ' %' : (Number.isInteger(k.step) ? Math.round(v) : fmt(+v, 1)) + (k.unit ? ' ' + k.unit : ''); }
 
 /* ======================= Interacción con el lienzo ======================= */
 const svg = $('#svg');
@@ -564,7 +657,14 @@ svg.addEventListener('pointerdown', e => {
   if (ctrl) {
     if (ctrl.dataset.ctrl === 'reset') { if (hexLoaded) startSim(); return; }
     const c = compById(+ctrl.dataset.id);
-    if (ctrl.dataset.ctrl === 'btn') { setPressed(c, c.props.latch ? !c.props.pressed : true); drag = { kind: 'btn', c }; }
+    if (ctrl.dataset.ctrl === 'tap') { const d = simDevs.get(c.id); if (d && d.tap) d.tap(); dispDirty = true; }
+    else if (ctrl.dataset.ctrl === 'joy') {
+      const [lx, ly] = rot(pt.x - c.x, pt.y - c.y, -c.rot);
+      const kx = c.props.x * 16 - 4, ky = -c.props.y * 16;
+      if (Math.hypot(lx - kx, ly - ky) < 9) { c.props.pressed = true; drag = { kind: 'joybtn', c }; } else drag = { kind: 'joy', c };
+      elecDirty = true; dispDirty = true;
+    }
+    else if (ctrl.dataset.ctrl === 'btn') { setPressed(c, c.props.latch ? !c.props.pressed : true); drag = { kind: 'btn', c }; }
     else if (ctrl.dataset.ctrl === 'sw') { c.props.pos = c.props.pos ? 0 : 1; const l = q(`[data-lever="${c.id}"]`); if (l) l.setAttribute('x', c.props.pos ? 2 : -20); elecDirty = true; dispDirty = true; scheduleSave(); }
     else drag = { kind: 'pot', c, y: pt.y, x: pt.x, pos: c.props.pos };
     svg.setPointerCapture(e.pointerId); if (!sel || sel.id !== c.id || sel.kind !== 'comp') { sel = { kind: 'comp', id: c.id }; updateProps(true); setHint(); }
@@ -581,9 +681,15 @@ svg.addEventListener('pointermove', e => {
   if (drag.kind === 'move') {
     const nx = clamp(snap(pt.x - drag.ox), 20, 1080), ny = clamp(snap(pt.y - drag.oy), 20, 680);
     if (nx !== drag.c.x || ny !== drag.c.y) { drag.c.x = nx; drag.c.y = ny; drag.moved = true; q(`[data-comp="${drag.c.id}"]`).setAttribute('transform', `translate(${nx},${ny}) rotate(${drag.c.rot})`); renderTerms(); renderWires(); }
+  } else if (drag.kind === 'joy') {
+    const c = drag.c; let [lx, ly] = rot(pt.x - c.x, pt.y - c.y, -c.rot); lx += 4;
+    let x = lx / 18, y = -ly / 18; const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
+    c.props.x = clamp(x, -1, 1); c.props.y = clamp(y, -1, 1); elecDirty = true; dispDirty = true;
   } else if (drag.kind === 'pot') { drag.c.props.pos = clamp(drag.pos + ((drag.y - pt.y) + (pt.x - drag.x)) / 160, 0, 1); elecDirty = true; dispDirty = true; const r = $('#pPos'); if (r) r.value = Math.round(drag.c.props.pos * 1000); }
 });
-const endDrag = () => { if (!drag) return; if (drag.kind === 'btn' && !drag.c.props.latch) setPressed(drag.c, false); if (drag.kind !== 'btn') scheduleSave(); drag = null; };
+const endDrag = () => { if (!drag) return; if (drag.kind === 'btn' && !drag.c.props.latch) setPressed(drag.c, false);
+  if (drag.kind === 'joy') { drag.c.props.x = 0; drag.c.props.y = 0; elecDirty = true; dispDirty = true; } // el resorte lo centra
+  if (drag.kind === 'joybtn') { drag.c.props.pressed = false; elecDirty = true; dispDirty = true; } if (drag.kind !== 'btn') scheduleSave(); drag = null; };
 svg.addEventListener('pointerup', endDrag); svg.addEventListener('pointercancel', endDrag);
 svg.addEventListener('wheel', e => { const k = e.target.closest('[data-ctrl="pot"]'); if (!k) return; e.preventDefault(); const c = compById(+k.dataset.id); c.props.pos = clamp(c.props.pos - Math.sign(e.deltaY) * 0.03, 0, 1); elecDirty = true; dispDirty = true; scheduleSave(); }, { passive: false });
 
@@ -608,6 +714,7 @@ $('#props').addEventListener('click', e => {
   else if (b.dataset.act === 'rot') rotateSel();
   else if (b.dataset.wcolor) { const w = state.wires.find(w => w.id === sel.id); w.color = b.dataset.wcolor; renderWires(); updateProps(true); scheduleSave(); }
 });
+$('#props').addEventListener('change', e => { if (e.target.dataset.ctl && sel && sel.kind === 'comp') renderComps(); });
 $('#props').addEventListener('input', e => {
   if (!sel || sel.kind !== 'comp') return; const c = compById(sel.id); const id = e.target.id; const v = e.target.value;
   if (id === 'pColor') { c.props.color = v; renderComps(); }
@@ -618,6 +725,14 @@ $('#props').addEventListener('input', e => {
   if (id === 'pBounce') c.props.bounce = e.target.checked;
   if (id === 'pLux') { c.props.lux = Math.pow(10, +v / 1000 * 5) - 1; const lbl = q(`[data-comp="${c.id}"] .clabel`); if (lbl) lbl.textContent = `${c.name} · ${Math.round(c.props.lux)} lx`; }
   if (id === 'pAddr') { c.props.address = +v; renderComps(); mapDevices(); }
+  const dp = e.target.dataset.prop;
+  if (dp) {
+    const k = (TYPES[c.type].controls || []).find(k => k.prop === dp);
+    if (e.target.type === 'checkbox') c.props[dp] = e.target.checked;
+    else if (k || e.target.dataset.num) c.props[dp] = +v; else c.props[dp] = v;
+    if (k) { const o = q(`[data-out="${dp}"]`); if (o) o.textContent = ctrlText(k, c.props[dp]); }
+    else { renderComps(); mapDevices(); }
+  }
   elecDirty = true; dispDirty = true; scheduleSave();
 });
 
@@ -733,8 +848,24 @@ function serialAppend(s){
 $('#clr').onclick = () => { serialEl.textContent = ''; };
 $('#serialForm').addEventListener('submit', e => {
   e.preventDefault(); const v = $('#serialIn').value + ($('#nl').checked ? '\n' : '');
-  if (uno) { uno.serialWrite([...v].map(ch => ch.charCodeAt(0) & 0xFF)); rxFlash = performance.now(); }
+  if (uno) { uno.serialWrite([...new TextEncoder().encode(v)]); rxFlash = performance.now(); }
   $('#serialIn').value = '';
+});
+
+/* ======================= Celular (Bluetooth HC-05) ======================= */
+function btDev(){ const c = state.comps.find(c => c.type === 'hc05'); return c ? simDevs.get(c.id) : null; }
+function updateBtPanel(){
+  const d = btDev(); const panel = $('#btPanel');
+  if (panel.hidden === !!d) { panel.hidden = !d; if (d) $('#btName').textContent = `${d.c.name} · ${d.c.props.baud} baudios`; }
+  if (d && d.rxText) { btAppend(d.rxText); d.rxText = ''; }
+}
+function btAppend(s){ const el = $('#btOut'); let t = el.textContent + s; if (t.length > 8000) t = t.slice(-6000); el.textContent = t; el.scrollTop = el.scrollHeight; }
+$('#btClr').onclick = () => { $('#btOut').textContent = ''; };
+$('#btForm').addEventListener('submit', e => {
+  e.preventDefault(); const d = btDev(); if (!d) return;
+  const v = $('#btIn').value + ($('#btNl').checked ? '\n' : '');
+  if (!d.send(v)) { btAppend('\n[no se envió: inicia la simulación, alimenta el módulo y conecta TXD a un pin del Arduino]\n'); return; }
+  $('#btIn').value = '';
 });
 
 /* ======================= Pestañas y librerías ======================= */
@@ -789,4 +920,4 @@ exSel.addEventListener('change', e => { if (e.target.value) { applyState(example
 drawBoard(); renderLibrary();
 applyState(loadState() || exampleState('completo'));
 requestAnimationFrame(t => { lastFrame = t; requestAnimationFrame(frame); });
-window.__banco = { get state(){ return state; }, get uno(){ return uno; }, io, lcdModels, servoAngles, compileAndRun, applyState, exampleState, get display(){ return display; }, setPressed, listLibraries, saveLibrary };
+window.__banco = { get state(){ return state; }, simDevs, refresh: () => { elecDirty = true; dispDirty = true; }, btSend: t => { const d = btDev(); return d ? d.send(t) : false; }, get uno(){ return uno; }, io, lcdModels, servoAngles, compileAndRun, applyState, exampleState, get display(){ return display; }, setPressed, listLibraries, saveLibrary };

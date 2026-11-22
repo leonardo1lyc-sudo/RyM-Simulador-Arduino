@@ -79,6 +79,11 @@
       <ul class="liblist builtin" id="builtinLibs"></ul>
       <p class="note">Las librerías se guardan en este navegador y se envían al compilar. Descarga el .zip desde GitHub (Code → Download ZIP) o desde la página del fabricante: es el mismo formato que «Añadir biblioteca .ZIP» del IDE de Arduino.</p>
     </div>
+    <div class="serial bt" id="btPanel" hidden>
+      <div class="serialbar"><b>Celular (Bluetooth)</b> <span id="btName"></span><span class="spacer"></span><button class="btn small" id="btClr">Limpiar</button></div>
+      <pre id="btOut"></pre>
+      <form id="btForm"><input id="btIn" placeholder="Enviar al módulo HC-05…" aria-label="Enviar por Bluetooth"><label class="toggle"><input type="checkbox" id="btNl" checked> Salto de línea</label><button class="btn small">Enviar</button></form>
+    </div>
     <div class="serial">
       <div class="serialbar"><b>Monitor serie</b> 9600 baudios <span class="spacer"></span><label class="toggle"><input type="checkbox" id="autoscroll" checked> Autodesplazar</label><button class="btn small" id="clr">Limpiar</button></div>
       <pre id="serialOut"></pre>

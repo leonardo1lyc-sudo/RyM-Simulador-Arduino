@@ -44,6 +44,14 @@ export class Uno {
     }
     this.usart.onByteTransmit = b => this.onSerial && this.onSerial(b);
     this.usart.onRxComplete = () => this.feedRx();
+    this.stopAt = Infinity;
+    this.events = []; // eventos programados por los dispositivos, ordenados por ciclo
+    this.spi.onByte = v => { const r = this.onSpi ? this.onSpi(v) : 0xFF; this.cpu.addClockEvent(() => this.spi.completeTransfer(r & 0xFF), this.spi.transferCycles); };
+  }
+  schedule(at, fn){
+    const e = { at: Math.max(at, this.cpu.cycles), fn }; const ev = this.events;
+    let i = ev.length; while (i > 0 && ev[i - 1].at > e.at) i--; ev.splice(i, 0, e);
+    if (e.at < this.stopAt) this.stopAt = Math.max(e.at, this.cpu.cycles + 1); // acorta el bloque en curso
   }
   get cycles(){ return this.cpu.cycles; }
   pinState(p){ const [n, b] = PIN_MAP[p]; return this.ports[n].pinState(b); }
@@ -62,9 +70,14 @@ export class Uno {
   // Ejecuta hasta el ciclo indicado; `hook` se llama cada `slice` ciclos para actualizar entradas.
   runUntil(target, slice, hook){
     const cpu = this.cpu;
+    const ev = this.events;
     while (cpu.cycles < target) {
-      const stop = Math.min(target, cpu.cycles + slice);
-      while (cpu.cycles < stop) { avrInstruction(cpu); cpu.tick(); }
+      let stop = Math.min(target, cpu.cycles + slice);
+      if (ev.length && ev[0].at < stop) stop = Math.max(ev[0].at, cpu.cycles + 1);
+      this.stopAt = stop;
+      while (cpu.cycles < this.stopAt) { avrInstruction(cpu); cpu.tick(); }
+      this.stopAt = Infinity;
+      while (ev.length && ev[0].at <= cpu.cycles) ev.shift().fn(cpu.cycles);
       if (hook) hook(cpu.cycles);
       if (this.rxQueue.length) this.feedRx();
     }

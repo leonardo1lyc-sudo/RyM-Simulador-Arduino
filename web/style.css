@@ -114,11 +114,14 @@ button{cursor:pointer}
 .liblist .btn{margin-left:auto}
 .liblist.builtin li{padding:6px 10px}
 .serial{display:flex;flex-direction:column;height:220px;border-top:1px solid var(--line)}
+.serial.bt{height:170px}
+.serial.bt .serialbar b::before{content:'📱 '}
+.props output{float:right;color:var(--ink);font-family:var(--f-code);font-size:11.5px}
 .serialbar{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}
 .serialbar b{color:var(--ink);font-weight:600}
-#serialOut{flex:1;margin:0;padding:8px 12px;overflow:auto;font-family:var(--f-code);font-size:12.5px;line-height:18px;white-space:pre-wrap;word-break:break-all;background:var(--panel2)}
-#serialForm{display:flex;gap:8px;align-items:center;padding:8px 12px;border-top:1px solid var(--line)}
-#serialIn{flex:1;min-width:0;border:1px solid var(--line);background:var(--panel2);border-radius:6px;padding:5px 8px;font-family:var(--f-code);font-size:12.5px}
+#serialOut,#btOut{flex:1;margin:0;padding:8px 12px;overflow:auto;font-family:var(--f-code);font-size:12.5px;line-height:18px;white-space:pre-wrap;word-break:break-all;background:var(--panel2)}
+#serialForm,#btForm{display:flex;gap:8px;align-items:center;padding:8px 12px;border-top:1px solid var(--line)}
+#serialIn,#btIn{flex:1;min-width:0;border:1px solid var(--line);background:var(--panel2);border-radius:6px;padding:5px 8px;font-family:var(--f-code);font-size:12.5px}
 
 /* SVG */
 .wire{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}

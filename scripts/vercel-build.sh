@@ -6,5 +6,5 @@ sh scripts/setup-vendor.sh
 rm -rf vendor/*/.git
 sh scripts/setup-toolchain.sh
 rm -rf .vercel-cache
-AVR_BIN="$PWD/toolchain/bin" BANCO_CACHE="$PWD/.vercel-cache" node -e "import('./server/build.js').then(b => b.buildCore()).then(c => console.log('núcleo precompilado', c.lib))"
+AVR_BIN="$PWD/toolchain/bin" BANCO_CACHE="$PWD/.vercel-cache" node scripts/prebuild-cache.mjs
 npm run build
