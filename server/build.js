@@ -14,7 +14,11 @@ const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 export const VENDOR = process.env.BANCO_VENDOR || path.join(ROOT, 'vendor');
 const CORE = path.join(VENDOR, 'ArduinoCore-avr');
 const CACHE = process.env.BANCO_CACHE || path.join(os.tmpdir(), 'banco-uno-cache');
+const SEED = process.env.BANCO_CACHE_SEED || ''; // caché de sólo lectura generada al construir (Vercel)
 const TOOL = n => (process.env.AVR_BIN ? path.join(process.env.AVR_BIN, n) : n);
+// Las claves de caché usan rutas relativas para que la caché precompilada sirva en otra máquina.
+const rel = p => { const r = path.relative(ROOT, p); return r.startsWith('..') ? p : r; };
+const relV = p => { const r = path.relative(VENDOR, p); return r.startsWith('..') ? rel(p) : 'vendor:' + r; };
 
 const MCU = ['-mmcu=atmega328p', '-DF_CPU=16000000L', '-DARDUINO=10819', '-DARDUINO_AVR_UNO', '-DARDUINO_ARCH_AVR'];
 const CFLAGS = ['-c', '-g', '-Os', '-w', '-std=gnu11', '-ffunction-sections', '-fdata-sections', '-MMD', ...MCU];
@@ -44,9 +48,10 @@ async function compileObj(src, includes, label){
   const inc = includes.map(i => '-I' + i);
   // Clave: contenido del fichero + flags + includes (los headers incluidos se cubren con el hash del conjunto de includes)
   const content = await fs.readFile(src);
-  const key = sha([tool, flags.join(' '), includes.join('|'), label, content.toString('binary')].join('\0'));
+  const key = sha([path.basename(tool), flags.join(' '), includes.map(relV).join('|'), label, content.toString('binary')].join('\0'));
   const obj = path.join(CACHE, 'obj', key + '.o');
   if (fss.existsSync(obj)) return obj;
+  if (SEED) { const s = path.join(SEED, 'obj', key + '.o'); if (fss.existsSync(s)) return s; }
   await fs.mkdir(path.dirname(obj), { recursive: true });
   const tmp = obj + '.' + process.pid + '.' + Math.random().toString(36).slice(2) + '.tmp';
   await run(tool, [...flags, ...inc, src, '-o', tmp], { timeout: 60000, maxBuffer: 4 << 20 });
@@ -63,8 +68,10 @@ export function buildCore(){
     const files = (await walk(coreDir, false)).filter(f => SRC_EXT.has(path.extname(f)));
     const objs = [];
     for (const f of files) objs.push(await compileObj(f, [coreDir, variant], 'core'));
-    const lib = path.join(CACHE, 'core-' + sha(objs.join('|')) + '.a');
-    if (!fss.existsSync(lib)) {
+    const name = 'core-' + sha(objs.map(o => path.basename(o)).join('|')) + '.a';
+    let lib = path.join(CACHE, name);
+    if (SEED && !fss.existsSync(lib) && fss.existsSync(path.join(SEED, name))) lib = path.join(SEED, name);
+    else if (!fss.existsSync(lib)) {
       const tmp = lib + '.tmp' + process.pid;
       await run(TOOL('avr-gcc-ar'), ['rcs', tmp, ...objs]).catch(() => run(TOOL('avr-ar'), ['rcs', tmp, ...objs]));
       await fs.rename(tmp, lib);

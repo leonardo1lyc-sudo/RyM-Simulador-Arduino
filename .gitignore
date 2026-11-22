@@ -3,3 +3,7 @@ vendor/
 web/dist/
 *.log
 .DS_Store
+toolchain/
+.toolchain-tmp/
+.vercel-cache/
+.vercel/
