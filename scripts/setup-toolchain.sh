@@ -1,17 +1,21 @@
 #!/usr/bin/env sh
-# Descarga un avr-gcc portátil (sin dependencias del sistema) y lo recorta a lo necesario
-# para el ATmega328P. Se usa en Vercel, donde no se puede instalar gcc-avr con apt.
+# avr-gcc portátil para entornos sin apt (Vercel). Se recorta a lo necesario para el ATmega328P.
+# Primero intenta el toolchain oficial de Arduino (avr-gcc 7.3, el mismo del IDE, compatible con glibc
+# antiguas como la de Vercel); si no se puede descargar, usa avr-gcc 14.1 de ZakKemble (glibc >= 2.36).
 set -eu
 cd "$(dirname "$0")/.."
-VERSION=14.1.0
-URL="https://github.com/ZakKemble/avr-gcc-build/releases/download/v${VERSION}-1/avr-gcc-${VERSION}-x64-linux.tar.bz2"
 T=toolchain
 if [ -x "$T/bin/avr-gcc" ]; then echo "toolchain/ ya existe"; exit 0; fi
 rm -rf "$T" .toolchain-tmp && mkdir -p .toolchain-tmp
+ARDUINO_URL="https://downloads.arduino.cc/tools/avr-gcc-7.3.0-atmel3.6.1-arduino7-x86_64-pc-linux-gnu.tar.bz2"
+ZAK_URL="https://github.com/ZakKemble/avr-gcc-build/releases/download/v14.1.0-1/avr-gcc-14.1.0-x64-linux.tar.bz2"
 if [ -n "${TOOLCHAIN_TARBALL:-}" ]; then cp "$TOOLCHAIN_TARBALL" .toolchain-tmp/gcc.tar.bz2
-else curl -sSL --retry 3 -o .toolchain-tmp/gcc.tar.bz2 "$URL"; fi
+elif [ "${TOOLCHAIN:-arduino}" = arduino ] && curl -fsSL --retry 3 -o .toolchain-tmp/gcc.tar.bz2 "$ARDUINO_URL"; then echo "toolchain oficial de Arduino"
+else curl -fsSL --retry 3 -o .toolchain-tmp/gcc.tar.bz2 "$ZAK_URL"; echo "toolchain ZakKemble"; fi
 tar xjf .toolchain-tmp/gcc.tar.bz2 -C .toolchain-tmp
-mv .toolchain-tmp/avr-gcc-${VERSION}-x64-linux "$T" && rm -rf .toolchain-tmp
+mv .toolchain-tmp/*/ "$T" && rm -rf .toolchain-tmp
+VERSION=$(ls "$T/lib/gcc/avr")
+echo "avr-gcc $VERSION"
 cd "$T"
 rm -rf share include README.txt permissions.sh lib/libavr-sim.a lib/libcc1* lib/bfd-plugins
 # binarios
