@@ -1,0 +1,11 @@
+# Despliegue en Render (New → Blueprint → elegir este repositorio)
+services:
+  - type: web
+    name: banco-uno
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: BANCO_PARALLEL
+        value: "1"

@@ -50,3 +50,7 @@ server/index.js        servidor HTTP: web estática, /api/compile y /api/librari
 ## Seguridad del compilador
 
 El servidor compila código de terceros. Rechaza `#include` con rutas absolutas, `..` o macros, y `.incbin`, limita tamaños y tiempo de compilación y nunca ejecuta el programa compilado. Aun así, ejecútalo dentro de un contenedor sin privilegios (el `Dockerfile` usa un usuario sin permisos de root).
+
+## Publicar
+
+El repositorio incluye `render.yaml`: en [Render](https://render.com) elige **New → Blueprint** y selecciona este repositorio. Cualquier servicio que ejecute contenedores Docker (Fly.io, Railway, Google Cloud Run, un VPS) sirve igual: construye el `Dockerfile` y expone el puerto 8080.
