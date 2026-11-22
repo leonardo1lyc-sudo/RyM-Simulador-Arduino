@@ -6,12 +6,13 @@ mkdir -p vendor
 fetch() { # repo destino commit
   if [ -d "vendor/$2" ] && [ -n "$(ls -A "vendor/$2")" ]; then return; fi
   mkdir -p "vendor/$2"
-  if curl -fsSL --retry 3 -o "vendor/.$2.tgz" "https://codeload.github.com/$1/tar.gz/$3"; then
-    tar xzf "vendor/.$2.tgz" -C "vendor/$2" --strip-components 1
+  t="vendor/.$(echo "$2" | tr / _).tgz"
+  if curl -fsSL --retry 3 -o "$t" "https://codeload.github.com/$1/tar.gz/$3"; then
+    tar xzf "$t" -C "vendor/$2" --strip-components 1
   else # sin codeload: git
     git -C "vendor/$2" init -q && git -C "vendor/$2" fetch -q --depth 1 "https://github.com/$1.git" "$3" && git -C "vendor/$2" checkout -q FETCH_HEAD && rm -rf "vendor/$2/.git"
   fi
-  rm -f "vendor/.$2.tgz"
+  rm -f "$t"
   rm -rf "vendor/$2/examples" "vendor/$2/extras" "vendor/$2/docs"
 }
 fetch arduino/ArduinoCore-avr ArduinoCore-avr 11b9130371e8447920edb65a75706a6c951e51fc
