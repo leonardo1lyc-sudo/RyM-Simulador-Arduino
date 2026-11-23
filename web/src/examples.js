@@ -1663,4 +1663,51 @@ void loop() {
 }
 `,
   },
+  protoboard: {
+    title: 'Semáforo en protoboard',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'bb400', x: 600, y: 60, rot: 0, name: 'PB1', props: {} },
+          { id: 2, type: 'led', x: 640, y: 130, rot: 0, name: 'LED1', props: { color: 'rojo' } },
+          { id: 3, type: 'led', x: 680, y: 130, rot: 0, name: 'LED2', props: { color: 'amarillo' } },
+          { id: 4, type: 'led', x: 720, y: 130, rot: 0, name: 'LED3', props: { color: 'verde' } },
+          { id: 5, type: 'res', x: 698, y: 180, rot: 0, name: 'R1', props: { ohms: 220 } },
+          { id: 6, type: 'res', x: 738, y: 190, rot: 0, name: 'R2', props: { ohms: 220 } },
+          { id: 7, type: 'res', x: 778, y: 200, rot: 0, name: 'R3', props: { ohms: 220 } },
+        ],
+        wires: [
+          { id: 10, a: 'B:D2', b: 'C1:a2', pts: [], color: RED },
+          { id: 11, a: 'B:D3', b: 'C1:a6', pts: [], color: SIG[0] },
+          { id: 12, a: 'B:D4', b: 'C1:a10', pts: [], color: SIG[2] },
+          { id: 13, a: 'B:GND.1', b: 'C1:bn1', pts: [], color: GND },
+          { id: 14, a: 'C1:a14', b: 'C1:bn12', pts: [], color: GND },
+          { id: 15, a: 'C1:a18', b: 'C1:bn16', pts: [], color: GND },
+          { id: 16, a: 'C1:a22', b: 'C1:bn19', pts: [], color: GND },
+        ],
+        counters: { bb400: 1, led: 3, res: 3 },
+      };
+    },
+    code: `// Semáforo armado en una protoboard
+// Los LED y las resistencias están enchufados: cada pata queda unida a las otras 4 perforaciones de su columna.
+// Los cables van del Arduino a las columnas de cada ánodo, y de cada resistencia al riel − (GND).
+
+const int ROJO = 2, AMARILLO = 3, VERDE = 4;
+
+void setup() {
+  pinMode(ROJO, OUTPUT);
+  pinMode(AMARILLO, OUTPUT);
+  pinMode(VERDE, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(ROJO, HIGH);     delay(2000);
+  digitalWrite(ROJO, LOW);
+  digitalWrite(VERDE, HIGH);    delay(2000);
+  digitalWrite(VERDE, LOW);
+  digitalWrite(AMARILLO, HIGH); delay(700);
+  digitalWrite(AMARILLO, LOW);
+}
+`,
+  },
 };

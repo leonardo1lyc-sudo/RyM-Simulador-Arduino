@@ -62,9 +62,20 @@ function rebuildCircuit(){
   for (const k of keys) parent.set(k, k);
   for (const net of BRD.nets) for (const k of net.slice(1)) union('B:' + net[0], 'B:' + k);
   for (const w of state.wires) if (parent.has(w.a) && parent.has(w.b)) union(w.a, w.b);
+  // protoboards: tiras internas y patas apoyadas sobre un agujero
+  const holes = new Map(), isHole = new Set();
+  for (const c of state.comps) {
+    const def = TYPES[c.type]; if (def.nets) for (const g of def.nets(c)) for (const t of g.slice(1)) union(`C${c.id}:${g[0]}`, `C${c.id}:${t}`);
+    if (def.breadboard) for (const t in def.terms) { const k = `C${c.id}:${t}`, p = termPos(k); isHole.add(k); holes.set(`${Math.round(p.x)},${Math.round(p.y)}`, k); }
+  }
+  if (holes.size) for (const c of state.comps) if (!TYPES[c.type].breadboard) for (const t in TYPES[c.type].terms) {
+    const k = `C${c.id}:${t}`, p = termPos(k), hx = Math.round(p.x / 10) * 10, hy = Math.round(p.y / 10) * 10;
+    const h = Math.abs(p.x - hx) <= 4 && Math.abs(p.y - hy) <= 4 && holes.get(`${hx},${hy}`); if (h) union(k, h);
+  }
+  const live = new Set(); for (const k of keys) if (!isHole.has(k)) live.add(find(k)); // tiras vacías de la protoboard: fuera del sistema
   const gnd = find('B:GND.1'); const idx = new Map(); circuit.map = new Map(); let n = 0;
   const count = new Map();
-  for (const k of keys) { const r = find(k); count.set(r, (count.get(r) || 0) + 1); if (r === gnd) { circuit.map.set(k, -1); continue; } if (!idx.has(r)) idx.set(r, n++); circuit.map.set(k, idx.get(r)); }
+  for (const k of keys) { const r = find(k); if (!isHole.has(k)) count.set(r, (count.get(r) || 0) + 1); if (r === gnd) { circuit.map.set(k, -1); continue; } if (!live.has(r)) { circuit.map.set(k, -2); continue; } if (!idx.has(r)) idx.set(r, n++); circuit.map.set(k, idx.get(r)); }
   circuit.wired = new Set(keys.filter(k => count.get(find(k)) > 1));
   circuit.n = n; circuit.ver = structVer; elecDirty = true;
   mapDevices();
@@ -538,21 +549,26 @@ function stopTone(){ if (osc) { try { osc.stop(); } catch {} osc = null; } }
 $('#sound').onclick = () => { soundOn = !soundOn; $('#sound').setAttribute('aria-pressed', soundOn); $('#sound').textContent = soundOn ? '🔊 Sonido' : '🔇 Sonido'; if (!soundOn) stopTone(); else if (!audio) { try { audio = new AudioContext(); } catch {} } };
 
 /* ======================= Dibujo de componentes ======================= */
+// capas para protoboards: su dibujo y sus agujeros quedan debajo de los componentes (que se pueden agarrar encima)
+const layerBefore = (id, ref) => { let g = document.getElementById(id); if (!g) { g = document.createElementNS('http://www.w3.org/2000/svg', 'g'); g.id = id; ref.before(g); } return g; };
+const bbLayer = layerBefore('bbLayer', $('#compLayer')), holeLayer = layerBefore('holeLayer', $('#compLayer'));
 function renderComps(){
-  let s = '';
+  let s = '', u = '';
   for (const c of state.comps) {
     const t = TYPES[c.type]; const [bx, by, bw, bh] = typeof t.box === 'function' ? t.box(c) : t.box;
     const isSel = sel && sel.kind === 'comp' && sel.id === c.id;
-    s += `<g class="comp${isSel ? ' sel' : ''}" data-comp="${c.id}" transform="translate(${c.x},${c.y}) rotate(${c.rot})"><rect class="outline" x="${bx - 4}" y="${by - 4}" width="${bw + 8}" height="${bh + 8}" rx="6"/>${t.svg(c)}</g>`;
+    const g = `<g class="comp${isSel ? ' sel' : ''}" data-comp="${c.id}" transform="translate(${c.x},${c.y}) rotate(${c.rot})"><rect class="outline" x="${bx - 4}" y="${by - 4}" width="${bw + 8}" height="${bh + 8}" rx="6"/>${t.svg(c)}</g>`;
+    if (t.under) u += g; else s += g;
   }
-  $('#compLayer').innerHTML = s;
+  $('#compLayer').innerHTML = s; bbLayer.innerHTML = u;
   renderTerms(); renderWires(); dispDirty = true;
 }
 function renderTerms(){
   let s = '';
   for (const id in BPIN) { const p = BPIN[id]; s += `<circle class="term" data-term="B:${id}" cx="${p.x}" cy="${p.y}" r="7"><title>${pinTitle(id)}</title></circle>`; }
-  for (const c of state.comps) for (const t in TYPES[c.type].terms) { const k = `C${c.id}:${t}`, p = termPos(k); s += `<circle class="term" data-term="${k}" cx="${p.x}" cy="${p.y}" r="6.5"><title>${esc(c.name)}: ${esc(TYPES[c.type].terms[t].name)}</title></circle>`; }
-  $('#termLayer').innerHTML = s;
+  let h = '';
+  for (const c of state.comps) { const r = TYPES[c.type].termR || 6.5; let o = ''; for (const t in TYPES[c.type].terms) { const k = `C${c.id}:${t}`, p = termPos(k); o += `<circle class="term" data-term="${k}" cx="${p.x}" cy="${p.y}" r="${r}"><title>${esc(c.name)}: ${esc(TYPES[c.type].terms[t].name)}</title></circle>`; } if (TYPES[c.type].under) h += o; else s += o; }
+  $('#termLayer').innerHTML = s; holeLayer.innerHTML = h;
 }
 function wirePath(a, pts, b){
   if (!pts.length) { const dist = Math.hypot(b.x - a.x, b.y - a.y); const k = Math.min(90, dist * 0.4 + 18); return `M${a.x} ${a.y} C${a.x + a.dx * k} ${a.y + a.dy * k} ${b.x + b.dx * k} ${b.y + b.dy * k} ${b.x} ${b.y}`; }
@@ -676,7 +692,7 @@ svg.addEventListener('pointerdown', e => {
     svg.setPointerCapture(e.pointerId); if (!sel || sel.id !== c.id || sel.kind !== 'comp') { sel = { kind: 'comp', id: c.id }; updateProps(true); setHint(); }
     e.preventDefault(); return;
   }
-  if (comp) { const c = compById(+comp.dataset.comp); drag = { kind: 'move', c, ox: pt.x - c.x, oy: pt.y - c.y, moved: false }; svg.setPointerCapture(e.pointerId); select({ kind: 'comp', id: c.id }); return; }
+  if (comp) { const c = compById(+comp.dataset.comp); drag = { kind: 'move', c, ox: pt.x - c.x, oy: pt.y - c.y, moved: false, riders: TYPES[c.type].breadboard ? ridersOf(c) : [] }; svg.setPointerCapture(e.pointerId); select({ kind: 'comp', id: c.id }); return; }
   if (wire) { select({ kind: 'wire', id: +wire.dataset.wire }); return; }
   if (sel) select(null);
 });
@@ -686,7 +702,10 @@ svg.addEventListener('pointermove', e => {
   if (!drag) return;
   if (drag.kind === 'move') {
     const nx = clamp(snap(pt.x - drag.ox), 20, BRD.canvasW - 20), ny = clamp(snap(pt.y - drag.oy), 20, 680);
-    if (nx !== drag.c.x || ny !== drag.c.y) { drag.c.x = nx; drag.c.y = ny; drag.moved = true; q(`[data-comp="${drag.c.id}"]`).setAttribute('transform', `translate(${nx},${ny}) rotate(${drag.c.rot})`); renderTerms(); renderWires(); }
+    if (nx !== drag.c.x || ny !== drag.c.y) {
+      for (const r of drag.riders) { r.x += nx - drag.c.x; r.y += ny - drag.c.y; q(`[data-comp="${r.id}"]`).setAttribute('transform', `translate(${r.x},${r.y}) rotate(${r.rot})`); } // lo que está enchufado se mueve con la protoboard
+      drag.c.x = nx; drag.c.y = ny; drag.moved = true; q(`[data-comp="${drag.c.id}"]`).setAttribute('transform', `translate(${nx},${ny}) rotate(${drag.c.rot})`); renderTerms(); renderWires();
+    }
   } else if (drag.kind === 'joy') {
     const c = drag.c; let [lx, ly] = rot(pt.x - c.x, pt.y - c.y, -c.rot); lx += 4;
     let x = lx / 18, y = -ly / 18; const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
@@ -696,7 +715,8 @@ svg.addEventListener('pointermove', e => {
 const endDrag = () => { if (!drag) return; if (drag.kind === 'boot') { bootPressed = false; elecDirty = true; dispDirty = true; drag = null; return; } if (drag.kind === 'btn' && !drag.c.props.latch) setPressed(drag.c, false);
   if (drag.kind === 'key') pressKey(drag.c, -1);
   if (drag.kind === 'joy') { drag.c.props.x = 0; drag.c.props.y = 0; elecDirty = true; dispDirty = true; } // el resorte lo centra
-  if (drag.kind === 'joybtn') { drag.c.props.pressed = false; elecDirty = true; dispDirty = true; } if (drag.kind !== 'btn') scheduleSave(); drag = null; };
+  if (drag.kind === 'joybtn') { drag.c.props.pressed = false; elecDirty = true; dispDirty = true; }
+  if (drag.kind === 'move' && drag.moved && state.comps.some(c => TYPES[c.type].breadboard)) { structChanged(); dispDirty = true; } /* conexiones por protoboard */ if (drag.kind !== 'btn') scheduleSave(); drag = null; };
 svg.addEventListener('pointerup', endDrag); svg.addEventListener('pointercancel', endDrag);
 svg.addEventListener('wheel', e => { const k = e.target.closest('[data-ctrl="pot"]'); if (!k) return; e.preventDefault(); const c = compById(+k.dataset.id); c.props.pos = clamp(c.props.pos - Math.sign(e.deltaY) * 0.03, 0, 1); elecDirty = true; dispDirty = true; scheduleSave(); }, { passive: false });
 
@@ -706,6 +726,10 @@ function deleteSel(){
   if (sel.kind === 'wire') state.wires = state.wires.filter(w => w.id !== sel.id);
   else { const pre = `C${sel.id}:`; state.comps = state.comps.filter(c => c.id !== sel.id); state.wires = state.wires.filter(w => !w.a.startsWith(pre) && !w.b.startsWith(pre)); lcdModels.delete(sel.id); }
   sel = null; structChanged(); renderComps(); updateProps(true); setHint();
+}
+function ridersOf(bb){ // componentes con alguna pata en un agujero de esta protoboard
+  const pos = new Set(Object.keys(TYPES[bb.type].terms).map(t => { const p = termPos(`C${bb.id}:${t}`); return `${Math.round(p.x)},${Math.round(p.y)}`; }));
+  return state.comps.filter(c => c !== bb && !TYPES[c.type].breadboard && Object.keys(TYPES[c.type].terms).some(t => { const p = termPos(`C${c.id}:${t}`); return pos.has(`${Math.round(p.x / 10) * 10},${Math.round(p.y / 10) * 10}`); }));
 }
 function rotateSel(){ if (!sel || sel.kind !== 'comp') return; const c = compById(sel.id); c.rot = (c.rot + 90) % 360; structChanged(); renderComps(); }
 $('#del').onclick = deleteSel; $('#rotate').onclick = rotateSel;
