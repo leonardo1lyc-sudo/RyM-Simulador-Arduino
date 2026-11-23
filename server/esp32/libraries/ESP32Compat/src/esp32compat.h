@@ -11,6 +11,7 @@
 #define RTC_NOINIT_ATTR
 #define WORD_ALIGNED_ATTR
 typedef int esp_err_t;
+extern const void *esp32_ram_buf; // búfer en RAM que send_P debe leer como RAM (cuadro de la cámara)
 #define ESP_OK 0
 #define ESP_FAIL -1
 
@@ -112,6 +113,25 @@ int esp_sleep_get_wakeup_cause();
 #define GPIO_NUM_27 27
 #define GPIO_NUM_32 32
 #define GPIO_NUM_33 33
+#define GPIO_NUM_1 1
+#define GPIO_NUM_3 3
+#define GPIO_NUM_5 5
+#define GPIO_NUM_16 16
+#define GPIO_NUM_17 17
+#define GPIO_NUM_18 18
+#define GPIO_NUM_19 19
+#define GPIO_NUM_21 21
+#define GPIO_NUM_22 22
+#define GPIO_NUM_23 23
+#define GPIO_NUM_34 34
+#define GPIO_NUM_35 35
+#define GPIO_NUM_36 36
+#define GPIO_NUM_39 39
+#define GPIO_NUM_NC -1
+// PSRAM: la ESP32-CAM la trae, la simulación no (los buffers van a la RAM interna)
+static inline bool psramFound(void) { return false; }
+#define ps_malloc(n) malloc(n)
+#define ps_calloc(n, s) calloc(n, s)
 typedef int gpio_num_t;
 uint32_t getCpuFrequencyMhz();
 bool setCpuFrequencyMhz(uint32_t mhz);

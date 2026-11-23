@@ -1337,4 +1337,86 @@ void loop() {
 }
 `,
   },
+  esp32cam: {
+    title: 'ESP32-CAM: tomar fotos desde el navegador',
+    board: 'esp32cam',
+    build(){ return { comps: [], wires: [], counters: {} }; },
+    code: `// ESP32-CAM (AI-Thinker): página con un botón para sacar una foto con flash.
+// La cámara está simulada: la foto es una imagen de prueba con la resolución elegida.
+#include <WiFi.h>
+#include <WebServer.h>
+#include "esp_camera.h"
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
+
+const char* RED = "MiCasa";
+const char* CLAVE = "12345678";
+const int FLASH = 4;     // LED flash de la placa
+const int LED_ROJO = 33; // LED rojo de la placa (se prende en LOW)
+
+WebServer server(80);
+int fotos = 0;
+
+void pagina() {
+  String html = "<!doctype html><html><head><meta name='viewport' content='width=device-width'>"
+    "<style>body{font-family:sans-serif;text-align:center;background:#222;color:#eee}"
+    "button{font-size:18px;padding:10px 20px;margin:8px;border:0;border-radius:8px;background:#e69138;color:#fff}"
+    "img{max-width:100%;border:2px solid #555;border-radius:6px}</style></head><body>"
+    "<h2>ESP32-CAM</h2><img id='foto' src='/capture'><br>"
+    "<button onclick=\\"document.getElementById('foto').src='/capture?t='+Date.now()\\">Tomar foto</button>"
+    "<p>Fotos sacadas: <b id='n'>" + String(fotos) + "</b></p></body></html>";
+  server.send(200, "text/html", html);
+}
+
+void capturar() {
+  digitalWrite(FLASH, HIGH);
+  delay(80);
+  camera_fb_t* fb = esp_camera_fb_get();
+  digitalWrite(FLASH, LOW);
+  if (!fb) { server.send(500, "text/plain", "Error de la camara"); return; }
+  fotos++;
+  Serial.printf("Foto %d: %ux%u, %u bytes\\n", fotos, fb->width, fb->height, fb->len);
+  server.sendHeader("Content-Disposition", "inline; filename=foto.jpg");
+  server.send_P(200, "image/jpeg", (const char*)fb->buf, fb->len);
+  esp_camera_fb_return(fb);
+}
+
+void setup() {
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // desactiva el detector de baja tensión
+  Serial.begin(115200);
+  pinMode(FLASH, OUTPUT);
+  pinMode(LED_ROJO, OUTPUT);
+
+  camera_config_t config;
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+  config.pin_d0 = 5;  config.pin_d1 = 18; config.pin_d2 = 19; config.pin_d3 = 21;
+  config.pin_d4 = 36; config.pin_d5 = 39; config.pin_d6 = 34; config.pin_d7 = 35;
+  config.pin_xclk = 0; config.pin_pclk = 22; config.pin_vsync = 25; config.pin_href = 23;
+  config.pin_sccb_sda = 26; config.pin_sccb_scl = 27;
+  config.pin_pwdn = 32; config.pin_reset = -1;
+  config.xclk_freq_hz = 20000000;
+  config.pixel_format = PIXFORMAT_JPEG;
+  config.frame_size = FRAMESIZE_VGA;
+  config.jpeg_quality = 12;
+  config.fb_count = 1;
+  if (esp_camera_init(&config) != ESP_OK) { Serial.println("No se encontro la camara"); return; }
+
+  WiFi.begin(RED, CLAVE);
+  Serial.print("Conectando");
+  while (WiFi.status() != WL_CONNECTED) { delay(300); Serial.print("."); digitalWrite(LED_ROJO, !digitalRead(LED_ROJO)); }
+  digitalWrite(LED_ROJO, LOW); // conectado: LED rojo fijo
+  Serial.print("\\nCamara lista en http://");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", pagina);
+  server.on("/capture", capturar);
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+}
+`,
+  },
 };

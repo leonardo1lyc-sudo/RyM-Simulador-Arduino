@@ -6,6 +6,7 @@ Simulador de Arduino en el navegador con **emulación real del ATmega328P y el A
 
 - **Placas**: Arduino Uno R3, Arduino Nano (A6 y A7 solo analógicas) y Arduino Mega 2560 (54 pines digitales, 16 entradas analógicas, 15 PWM, Serial1–3, I2C en 20/21, SPI en 50–53). Se elige en el selector junto a los ejemplos; al cambiar de placa se conservan los cables de los pines que existen en las dos.
 - **ESP32 DevKit (modo compatible)**: pinout real de 30 pines a 3,3 V, numeración por GPIO, `analogRead` de 12 bits, LEDC (API 2.x y 3.x), `dacWrite`, `touchRead`, interrupciones con `attachInterrupt(GPIO, …)`, botones EN y BOOT, `Serial.printf`, `Preferences`, `ESP32Servo` y `BluetoothSerial` (panel «Celular»). WiFi simulado: `WiFi.begin`/`softAP`, `WebServer` y `WiFiServer`; la página que sirve el ESP32 se ve en el panel **Navegador**, con enlaces, formularios y `fetch()`. No hay internet ni FreeRTOS: el programa corre sobre un ATmega2560 emulado con librerías de compatibilidad (`server/esp32/`), así que la velocidad y la memoria no son las del ESP32 real.
+- **ESP32-CAM (AI-Thinker, modo compatible)**: sus 16 pines, LED flash en GPIO4, LED rojo en GPIO33 y botón RST. `esp_camera.h` con la cámara OV2640 simulada: `esp_camera_fb_get()` entrega un cuadro con la resolución elegida y el panel Navegador lo muestra como una imagen de prueba (también dentro de `<img>` de la página). No hay vídeo continuo (MJPEG).
 - **Editor de circuitos**: biblioteca de componentes, arrastrar y soltar, cables con codos, girar, propiedades.
 - **Componentes**: LED (6 colores), LED RGB, resistencia (bandas de color), pulsador (con rebote opcional), interruptor, potenciómetro, fotorresistencia, zumbador (con sonido), servo SG90, LCD 16×2 paralelo (HD44780) y LCD 16×2 I2C (PCF8574).
 - **Módulos**: ultrasonido HC-SR04, DHT22/DHT11, PIR, joystick KY-023, sensor de llama, sensor de gas MQ-2, módulo relé, driver L298N con motor DC, batería, OLED SSD1306 I2C, matriz 8×8 MAX7219 y Bluetooth HC-05/HC-06 (con panel «Celular» para enviar y recibir).
@@ -45,7 +46,7 @@ node test/e2e-kits.cjs        # módulos del kit KY, humedad de suelo, agua, rel
 node test/e2e-kits2.cjs       # 7 segmentos, TM1637, teclado 4x4, encoder, control IR
 node test/e2e-kits3.cjs       # DS1302, 28BYJ-48 + ULN2003, RC522, DS18B20
 node test/e2e-boards.cjs      # placas Nano y Mega 2560 (PWM de los 6 timers, A8, INT4, Serial1, I2C en 20/21)
-node test/e2e-esp32.cjs       # ESP32: WiFi y servidor web, Navegador, ADC de 12 bits, LEDC, BOOT con interrupción, Bluetooth
+node test/e2e-esp32.cjs       # ESP32 y ESP32-CAM: WiFi y servidor web, Navegador, ADC de 12 bits, LEDC, BOOT, Bluetooth, fotos
 ```
 
 ## Arquitectura

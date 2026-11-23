@@ -118,7 +118,7 @@ function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
       dI.set(d.id, on ? Math.max(0, (vd - d.vf) / d.ron) : 0);
     }
     const pinI = []; for (let p = 0; p < NP; p++) if (pinV[p] !== undefined) pinI[p] = (pinV[p] - v(node('B:' + pinName(p)))) / 25;
-    res = { V, gReal, dI, pinI, i5V: (5 - v(node(BRD.esp32 ? 'B:VIN' : 'B:5V'))) / 0.05, i3V: (3.3 - v(node('B:3V3'))) / 0.5, v, ver: circuit.ver };
+    res = { V, gReal, dI, pinI, i5V: (5 - v(node(BRD.terms['5V'] ? 'B:5V' : 'B:VIN'))) / 0.05, i3V: (3.3 - v(node('B:3V3'))) / 0.5, v, ver: circuit.ver };
     let moved = false;
     if (usedPrev) { if (!prevV) moved = true; else for (let i = 0; i < n; i++) if (Math.abs(V[i] - prevV[i]) > 1e-3) { moved = true; break; } }
     prevV = V;
@@ -406,7 +406,7 @@ function renderDynamic(){
   if (buzz) playTone(buzz._freq); else stopTone();
   const pinI = D.pinI || [];
   for (let p = 0; p < NP; p++) if (pinI[p] !== undefined && Math.abs(pinI[p]) > 0.04) warns.push(`${pinName(p)}: el pin entrega ${fmt(Math.abs(pinI[p]) * 1000, 0)} mA y el máximo del ${BRD.chipName} es 40 mA. Revisa si hay un corto o falta una resistencia.`);
-  if (D.sol && D.sol.i5V > 0.5) warns.push(`Cortocircuito: ${BRD.esp32 ? 'VIN' : '5V'} está unido directamente a GND.`);
+  if (D.sol && D.sol.i5V > 0.5) warns.push(`Cortocircuito: ${BRD.terms['5V'] ? '5V' : 'VIN'} está unido directamente a GND.`);
   if (D.sol && D.sol.i3V > 0.15) warns.push('Cortocircuito: 3,3 V está unido a GND o muy cargado.');
   if (running) for (const p of floatWarn) warns.push(`${pinName(p)}: la entrada queda flotante (sin nada que la fije a ${BRD.vio === 3.3 ? '3,3 V' : '5V'} o a GND) y lee valores al azar. Usa INPUT_PULLUP o una resistencia pull-down.`);
   for (const p of [BRD.uarts[0].rx, BRD.uarts[0].tx]) if (running && circuit.wired.has('B:D' + p)) { warns.push(`${BRD.label('D' + p)}: estos pines los usa el puerto serie (USB). Evita conectar cosas ahí si usas Serial.`); break; }
@@ -414,8 +414,11 @@ function renderDynamic(){
   const html = warns.map(w => `<div class="warn">${esc(w).replace(/^([^:]+:)/, '<b>$1</b>')}</div>`).join('');
   if (html !== lastWarnHTML) { $('#warnings').innerHTML = html; lastWarnHTML = html; }
   // LEDs y pines de la placa
-  const p13 = io.pins[BRD.ledPin ?? 13]; const lOn = running && p13.mode === 'OUTPUT' ? (p13.duty != null ? p13.duty : p13.val) : 0;
-  $('#bL').setAttribute('fill', BRD.esp32 ? (lOn > 0.02 ? `rgba(60,140,255,${0.35 + 0.65 * lOn})` : '#1a2a4a') : lOn > 0.02 ? `rgba(255,190,40,${0.35 + 0.65 * lOn})` : '#4a3d1a');
+  const outLvl = p => { const s = io.pins[p]; return running && s.mode === 'OUTPUT' ? (s.duty != null ? s.duty : s.val) : null; };
+  let lOn = outLvl(BRD.ledPin ?? 13); lOn = lOn == null ? 0 : BRD.ledActiveLow ? 1 - lOn : lOn;
+  const [lr, lg, lb] = BRD.ledColor || [255, 190, 40];
+  $('#bL').setAttribute('fill', lOn > 0.02 ? `rgba(${lr},${lg},${lb},${0.35 + 0.65 * lOn})` : BRD.ledOff || '#4a3d1a');
+  if (BRD.flashPin != null) { const f = outLvl(BRD.flashPin) || 0; const el = $('#bF'); el.setAttribute('fill', f > 0.02 ? `rgba(255,255,235,${0.5 + 0.5 * f})` : '#d8d2b0'); el.setAttribute('filter', f > 0.02 ? 'url(#glowS)' : 'none'); }
   $('#bTX').setAttribute('fill', now - txFlash < 60 ? '#ffbe28' : '#4a3d1a');
   $('#bRX').setAttribute('fill', now - rxFlash < 120 ? '#ffbe28' : '#4a3d1a');
   for (let p = 0; p < NP; p++) {
@@ -863,20 +866,41 @@ function webGo(href, method = 'GET', body = ''){
     if (r.timeout) { webShow(`<p style="font:14px sans-serif;color:#a33">El ESP32 no respondió a <b>${esc(path)}</b>.<br>¿Llamas a <code>server.handleClient()</code> en <code>loop()</code> y no hay un <code>delay()</code> largo?</p>`); return; }
     if (r.status >= 300 && r.status < 400 && r.headers.location) { webGo(r.headers.location); return; }
     webPath = path.split('?')[0];
-    if (/^image\//.test(r.type)) webShow(`<body style="margin:0;background:#111;display:grid;place-items:center;height:100vh"><img src="${cameraFrame()}" style="max-width:100%"></body>`);
+    if (/^image\//.test(r.type)) webShow(`<body style="margin:0;background:#111;display:grid;place-items:center;height:100vh"><img src="${imageOf(r)}" style="max-width:100%"></body>`);
     else if (/html/.test(r.type)) webShow(r.body);
     else webShow(`<pre style="font:13px ui-monospace,monospace;white-space:pre-wrap;margin:8px">${esc(r.body)}</pre>`);
   });
 }
-function cameraFrame(){ // imagen de prueba de la cámara simulada (ESP32-CAM)
-  const cv = document.createElement('canvas'); cv.width = 320; cv.height = 240; const g = cv.getContext('2d');
-  ['#fff', '#ff0', '#0ff', '#0f0', '#f0f', '#f00', '#00f', '#000'].forEach((c, i) => { g.fillStyle = c; g.fillRect(i * 40, 0, 40, 180); });
-  g.fillStyle = '#222'; g.fillRect(0, 180, 320, 60); g.fillStyle = '#fff'; g.font = '16px monospace';
-  g.fillText('Cámara simulada  ' + new Date().toLocaleTimeString(), 12, 215); return cv.toDataURL('image/jpeg', 0.8);
+// La cámara simulada no tiene imagen real: el cuadro que entrega esp_camera_fb_get() lleva la resolución y el
+// número de foto, y aquí se dibuja una escena de prueba con esos datos.
+function imageOf(r){
+  const m = /BANCOCAM:(\d+):(\d+):(\d+):(\d+)/.exec(r.body || '');
+  return m ? cameraFrame(+m[1], +m[2], +m[3], +m[4]) : cameraFrame(320, 240, 0, 0);
+}
+function cameraFrame(W, H, n, flags){
+  const k = Math.min(1, 640 / W), w = Math.round(W * k), h = Math.round(H * k);
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d');
+  g.save(); if (flags & 2) { g.translate(w, 0); g.scale(-1, 1); } if (flags & 1) { g.translate(0, h); g.scale(1, -1); }
+  const sky = g.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, '#6fa8dc'); sky.addColorStop(0.62, '#cfe2f3'); sky.addColorStop(0.62, '#7a9a5a'); sky.addColorStop(1, '#4f6b3a');
+  g.fillStyle = sky; g.fillRect(0, 0, w, h);
+  const t = (n || 0) * 0.35;
+  g.fillStyle = '#ffd966'; g.beginPath(); g.arc(w * (0.15 + 0.7 * ((Math.sin(t) + 1) / 2)), h * 0.2, h * 0.08, 0, 7); g.fill();
+  g.fillStyle = '#b45f06'; g.fillRect(w * 0.55, h * 0.38, w * 0.25, h * 0.26); g.fillStyle = '#990000'; g.beginPath(); g.moveTo(w * 0.52, h * 0.39); g.lineTo(w * 0.675, h * 0.24); g.lineTo(w * 0.83, h * 0.39); g.fill();
+  g.fillStyle = '#3d2b1f'; g.fillRect(w * 0.64, h * 0.5, w * 0.07, h * 0.14);
+  g.fillStyle = '#38761d'; g.beginPath(); g.arc(w * 0.25, h * 0.45, h * 0.13, 0, 7); g.fill(); g.fillStyle = '#5b3a1e'; g.fillRect(w * 0.24, h * 0.5, w * 0.02, h * 0.13);
+  g.restore();
+  const f = Math.max(10, Math.round(h / 16)); g.font = `${f}px monospace`; g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, h - f * 1.8, w, f * 1.8);
+  g.fillStyle = '#fff'; g.fillText(`Cámara simulada · ${W}×${H}${n ? ' · foto ' + n : ''} · ${new Date().toLocaleTimeString()}`, f * 0.6, h - f * 0.6);
+  return cv.toDataURL('image/jpeg', 0.85);
 }
 window.addEventListener('message', e => {
   const d = e.data; if (!d || e.source !== $('#webView').contentWindow) return;
   if (d.banco === 'nav') webGo(d.href, d.method, d.body);
+  if (d.banco === 'img') {
+    const reply = m => $('#webView').contentWindow.postMessage({ banco: 'img', id: d.id, ...m }, '*');
+    if (!esp || !running) { reply({}); return; }
+    esp.request('GET', webResolve(d.href), '', r => reply(!r.timeout && r.status === 200 && /^image\//.test(r.type) ? { src: imageOf(r) } : {}));
+  }
   if (d.banco === 'fetch') {
     const reply = m => $('#webView').contentWindow.postMessage({ banco: 'resp', id: d.id, ...m }, '*');
     if (!esp || !running) { reply({ error: 'sin conexión' }); return; }

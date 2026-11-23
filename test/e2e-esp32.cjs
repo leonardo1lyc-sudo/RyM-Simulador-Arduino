@@ -50,6 +50,22 @@ const OUT = process.env.SHOTS || '.';
   check(/LED encendido/.test(bt) && led2 === 1, 'BluetoothSerial ↔ panel Celular: ' + JSON.stringify(bt.trim()));
   await shot('e-bt');
 
+  // ESP32-CAM: la página muestra la foto de la cámara simulada; el botón saca otra con flash
+  await ex('esp32cam'); await waitSerial('Camara lista');
+  await frame().locator('#foto').waitFor({ timeout: 8000 }).catch(() => {});
+  const imgOk = () => frame().locator('#foto').evaluate(i => i.getAttribute('src').startsWith('data:image/jpeg') && i.naturalWidth).catch(() => 0);
+  await p.waitForTimeout(1500);
+  const w1 = await imgOk();
+  check(w1 === 640, `Foto de la ESP32-CAM en la página (ancho ${w1}, VGA 640)`);
+  await frame().locator('button').click();
+  const flash = await p.waitForFunction(() => /255,255,235/.test(document.querySelector('#bF').getAttribute('fill')), null, { timeout: 3000 }).then(() => true).catch(() => false);
+  await waitSerial('Foto 2:', 5000);
+  check(flash && /Foto 2: 640x480/.test(await serial()), 'Botón «Tomar foto» saca otra con flash en GPIO4: ' + JSON.stringify((await serial()).match(/Foto \d+: [^\n]*/g)));
+  const red = await p.evaluate(() => document.querySelector('#bL').getAttribute('fill'));
+  check(/255,40,30/.test(red), 'LED rojo (GPIO33, activo en LOW) encendido tras conectar: ' + red);
+  const warnTxt = await p.evaluate(() => document.querySelector('#warnings').textContent);
+  check(!/Cortocircuito/.test(warnTxt), 'Sin avisos falsos en la ESP32-CAM: ' + JSON.stringify(warnTxt.slice(0, 120)));
+  await shot('esp32cam');
   console.log('errores de página:', errs);
   await b.close(); process.exit(ok && !errs.length ? 0 : 1);
 })();

@@ -73,6 +73,8 @@ void touchAttachInterrupt(uint8_t pin, void (*cb)(void), uint16_t) { esp32_attac
 int hallRead() { return 0; }
 float temperatureRead() { return 46.5; }
 
+const void *esp32_ram_buf = 0;
+
 /* ---------- interrupciones: INT0/1/4/5 por hardware y cambio de pin (PCINT) en el resto ---------- */
 struct Isr { void (*f)(void); void (*fa)(void *); void *arg; uint8_t mode; };
 static Isr isr[40];

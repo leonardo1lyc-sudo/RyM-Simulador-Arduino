@@ -198,7 +198,7 @@ const mega = makeBoard({
 const esp32Pins = []; for (let g = 0; g < 40; g++) { const m = ESP32_GPIO[g]; esp32Pins.push(m ? [m[0], m[1]] : null); }
 const ESP_LABEL = { 1: 'TX0', 3: 'RX0', 16: 'RX2', 17: 'TX2', 36: 'VP', 39: 'VN' };
 const esp32 = makeBoard({
-  id: 'esp32', name: 'ESP32 DevKit', chipName: 'ESP32', mcu: 'atmega2560', canvasW: 1100, vio: 3.3, ledPin: 2, esp32: true,
+  id: 'esp32', name: 'ESP32 DevKit', chipName: 'ESP32', mcu: 'atmega2560', canvasW: 1100, vio: 3.3, ledPin: 2, ledColor: [60, 140, 255], ledOff: '#1a2a4a', esp32: true,
   rect: { x: 300, y: 130, w: 220, h: 410 },
   pins: esp32Pins, firstAnalog: 99, analog: { ...ESP32_ADC },
   pwm: new Set(), pinExtra: {},
@@ -250,4 +250,58 @@ const esp32 = makeBoard({
   };
 })(esp32);
 
-export const BOARDS = { uno, nano, mega, esp32 };
+/* =========================================================================
+   ESP32-CAM (AI-Thinker) en modo compatible: mismo chip y numeración que el DevKit, con cámara
+   OV2640 simulada, LED flash en GPIO4 y LED rojo en GPIO33 (se enciende en LOW)
+   ========================================================================= */
+const esp32cam = makeBoard({
+  id: 'esp32cam', name: 'ESP32-CAM', chipName: 'ESP32', mcu: 'atmega2560', canvasW: 1100, vio: 3.3, esp32: true, cam: true,
+  ledPin: 33, ledActiveLow: true, ledColor: [255, 40, 30], ledOff: '#4a1a1a', flashPin: 4,
+  rect: { x: 320, y: 150, w: 190, h: 330 },
+  pins: esp32Pins, firstAnalog: 99, analog: { ...ESP32_ADC },
+  pwm: new Set(), pinExtra: {},
+  notes: notesFrom([[1, 'U0T: TX del puerto serie (adaptador USB-serie)'], [3, 'U0R: RX del puerto serie'], [0, 'a GND para grabar el programa en la placa real'],
+    [4, 'LED flash de la placa (muy brillante)'], [2, 'también es HS2_DATA0 de la tarjeta SD'], [12, 'HS2_DATA2 de la SD'], [13, 'HS2_DATA3 de la SD'], [14, 'HS2_CLK de la SD · SDA (I2C) en la simulación'], [15, 'HS2_CMD de la SD · SCL (I2C) en la simulación'],
+    [16, 'en la placa real lo usa la PSRAM'], ...[[12, 10], [13, 11], [14, 9], [15, 14], [2, 13], [4, 12], [0, 15]].map(([g]) => [g, 'ADC2 (analogRead, 0–4095)'])]),
+  i2c: { sda: 'D14', scl: 'D15' }, spi: { mosi: 13, sck: 14 }, uarts: [{ rx: 3, tx: 1 }, null, { rx: 16, tx: 17 }, null],
+  nets: [['GND.1', 'GND.2', 'GND.3']], supplies: [['5V', 5, 0.05], ['3V3', 3.3, 0.5], ['VCC', 3.3, 0.5], ['D0', 3.3, 10000]],
+});
+(function(B){
+  const { x, y, w, h } = B.rect, y0 = y + h - 16 - 7 * PITCH;
+  const L = ['5V', 'GND.1', 'D12', 'D13', 'D15', 'D14', 'D2', 'D4'];
+  const R = ['3V3', 'D16', 'D0', 'GND.2', 'VCC', 'D3', 'D1', 'GND.3'];
+  L.forEach((id, i) => B.add(id, x + 14, y0 + i * PITCH, -1, 0));
+  R.forEach((id, i) => { B.add(id, x + w - 14, y0 + i * PITCH, 1, 0); B.terms[id].labelLeft = true; });
+  const LABEL = { 1: 'U0T', 3: 'U0R' };
+  B.pinName = p => 'D' + p;
+  B.pinOfName = id => { const m = /^D(\d+)$/.exec(id); return m && esp32Pins[+m[1]] ? +m[1] : -1; };
+  B.label = id => { const base = id.replace(/\.\d+$/, ''); const m = /^D(\d+)$/.exec(base); return m ? (LABEL[+m[1]] || 'IO' + m[1]) : base; };
+  B.title = id => {
+    const base = id.replace(/\.\d+$/, '');
+    if (base === 'GND') return 'GND (tierra, 0 V)'; if (base === '3V3') return '3,3 V'; if (base === '5V') return '5 V (alimentación de la placa)'; if (base === 'VCC') return 'VCC (salida de 3,3 V)';
+    const p = B.pinOfName(base); if (p < 0) return base;
+    return `GPIO${p}${B.notes[p] ? ' · ' + B.notes[p] : ''}`;
+  };
+  B.keys = esp32Pins.map((m, p) => m ? 'B:D' + p : null).filter(Boolean);
+  B.draw = () => {
+    let s = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="5" fill="#16181b" stroke="#000" stroke-width="2"/>`;
+    // antena impresa y módulo con blindaje
+    s += `<path d="M${x + 20} ${y + 26} v-14 h12 v12 h12 v-12 h12 v12 h12 v-12 h12 v12 h12 v-12 h${w - 100}" fill="none" stroke="#c9a54a" stroke-width="2.2"/>`;
+    s += `<rect x="${x + 18}" y="${y + 34}" width="${w - 36}" height="70" rx="2" fill="#b8bec3" stroke="#8b9297"/><text x="${x + w / 2}" y="${y + 66}" font-family="var(--f-ui)" font-weight="700" font-size="12" fill="#4a5056" text-anchor="middle">ESP32-S</text><text x="${x + w / 2}" y="${y + 82}" font-family="var(--f-code)" font-size="7" fill="#5b6268" text-anchor="middle">AI-Thinker · modo compatible</text>`;
+    // cámara OV2640 con su cinta y lente
+    s += `<rect x="${x + w / 2 - 34}" y="${y + 112}" width="68" height="14" rx="2" fill="#7a5a20"/><rect x="${x + w / 2 - 30}" y="${y + 120}" width="60" height="60" rx="4" fill="#0c0d0f" stroke="#2d3035"/>`;
+    s += `<circle cx="${x + w / 2}" cy="${y + 150}" r="22" fill="#1d2024" stroke="#3a3f45" stroke-width="2"/><circle cx="${x + w / 2}" cy="${y + 150}" r="13" fill="#0a1330"/><circle cx="${x + w / 2}" cy="${y + 150}" r="7" fill="#1a2a60"/><circle cx="${x + w / 2 - 4}" cy="${y + 146}" r="2.5" fill="#8fb0ff" opacity=".8"/>`;
+    s += `<text class="silk" x="${x + w / 2}" y="${y + 192}" font-size="7.5" text-anchor="middle">OV2640</text>`;
+    // LED flash (GPIO4), botón RST y LED rojo (GPIO33)
+    s += `<rect id="bF" x="${x + 22}" y="${y + 130}" width="16" height="16" rx="2" fill="#d8d2b0" stroke="#8d8a74"/><text class="silk" x="${x + 30}" y="${y + 158}" font-size="7" text-anchor="middle">FLASH</text>`;
+    s += `<g class="ctrl" data-ctrl="reset"><rect x="${x + w - 42}" y="${y + 128}" width="22" height="18" rx="2" fill="#c9cfd2"/><rect x="${x + w - 37}" y="${y + 132}" width="12" height="10" rx="2" fill="#3a3f44"/><title>RST: reiniciar la ESP32-CAM</title></g><text class="silk" x="${x + w - 31}" y="${y + 158}" font-size="7.5" text-anchor="middle">RST</text>`;
+    s += `<rect id="bL" x="${x + w / 2 - 5}" y="${y + 200}" width="10" height="6" rx="1" fill="#4a1a1a"/><text class="silk" x="${x + w / 2}" y="${y + 216}" font-size="7" text-anchor="middle">IO33</text>`;
+    s += `<rect x="${x + 6}" y="${y0 - 10}" width="18" height="${7 * PITCH + 20}" rx="2" fill="var(--header)"/><rect x="${x + w - 24}" y="${y0 - 10}" width="18" height="${7 * PITCH + 20}" rx="2" fill="var(--header)"/>`;
+    for (const id of [...L, ...R]) s += `<rect data-pinled="${id}" x="${B.terms[id].x - 3.5}" y="${B.terms[id].y - 3.5}" width="7" height="7" fill="#0c0c0c" stroke="#3a3a3a"/>`;
+    s += pinLabels(B);
+    s += `<rect id="bTX" width="0" height="0"/><rect id="bRX" width="0" height="0"/>`;
+    return s;
+  };
+})(esp32cam);
+
+export const BOARDS = { uno, nano, mega, esp32, esp32cam };

@@ -48,15 +48,16 @@ export class Esp32Link {
   }
   response(bytes){
     const r = this.pending; this.pending = null;
-    let text = dec.decode(bytes), status = 200, type = 'text/html', headers = {}, body = text;
-    if (/^HTTP\/1\.[01] \d+/.test(text)) {
-      const k = text.indexOf('\r\n\r\n'), head = k >= 0 ? text.slice(0, k) : text; body = k >= 0 ? text.slice(k + 4) : '';
+    let status = 200, type = 'text/html', headers = {}, body = bytes;
+    if (/^HTTP\/1\.[01] \d+/.test(dec.decode(bytes.subarray(0, 16)))) {
+      let k = -1; for (let i = 0; i + 3 < bytes.length; i++) if (bytes[i] === 13 && bytes[i + 1] === 10 && bytes[i + 2] === 13 && bytes[i + 3] === 10) { k = i; break; }
+      const head = dec.decode(k >= 0 ? bytes.subarray(0, k) : bytes); body = k >= 0 ? bytes.subarray(k + 4) : new Uint8Array(0);
       const lines = head.split('\r\n'); status = +lines[0].split(' ')[1];
       for (const l of lines.slice(1)) { const j = l.indexOf(':'); if (j > 0) headers[l.slice(0, j).trim().toLowerCase()] = l.slice(j + 1).trim(); }
       type = headers['content-type'] || 'text/html';
-      if (headers['content-length'] && !isNaN(+headers['content-length'])) body = new TextDecoder().decode(new TextEncoder().encode(body).slice(0, +headers['content-length']));
+      const n = +headers['content-length']; if (headers['content-length'] && !isNaN(n)) body = body.subarray(0, n); // cuenta en bytes, no en caracteres
     }
-    if (r && r.cb) r.cb({ status, type, headers, body, ms: performance.now() - r.t0 });
+    if (r && r.cb) r.cb({ status, type, headers, body: dec.decode(body), ms: performance.now() - r.t0 });
     this.pump();
   }
   // sin respuesta en 4 s (por ejemplo, si el programa no llama a server.handleClient())
@@ -79,6 +80,13 @@ function X(){this.readyState=0;this.status=0;this.responseText='';}
 X.prototype.open=function(m,u){this._m=m;this._u=u;this.readyState=1;};X.prototype.setRequestHeader=function(){};
 X.prototype.send=function(b){var x=this;fetch(x._u,{method:x._m,body:b||''}).then(function(r){return r.text().then(function(t){x.status=r.status;x.responseText=t;x.response=t;x.readyState=4;if(x.onreadystatechange)x.onreadystatechange();if(x.onload)x.onload();});});};
 window.XMLHttpRequest=X;
+// imágenes servidas por el ESP32 (por ejemplo, la foto de la ESP32-CAM): se piden por el canal simulado
+var imgWait={};
+function ext(h){return /^(https?:)?\\/\\//.test(h)&&h.indexOf('${HOST}')<0&&h.indexOf('192.168.4.1')<0;}
+function imgs(){var l=document.images;for(var i=0;i<l.length;i++){var im=l[i],h=im.getAttribute('src');if(!h||/^(data|blob):/.test(h)||ext(h)||im.dataset.bancoSrc===h)continue;im.dataset.bancoSrc=h;var id=++seq;imgWait[id]=im;parent.postMessage({banco:'img',id:id,href:h},'*');}}
+new MutationObserver(imgs).observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['src']});
+document.addEventListener('DOMContentLoaded',imgs);
+window.addEventListener('message',function(e){var d=e.data;if(!d||d.banco!=='img'||!imgWait[d.id])return;var im=imgWait[d.id];delete imgWait[d.id];if(d.src){im.src=d.src;im.dataset.bancoSrc=d.src;if(im.onload)setTimeout(function(){im.dispatchEvent(new Event('load'));},0);}else im.dispatchEvent(new Event('error'));});
 window.addEventListener('message',function(e){var d=e.data;if(!d||d.banco!=='resp'||!wait[d.id])return;var w=wait[d.id];delete wait[d.id];
  if(d.error){w[1](new TypeError(d.error));return;}
  w[0]({ok:d.status>=200&&d.status<300,status:d.status,headers:{get:function(k){return (d.headers||{})[k.toLowerCase()]||null;}},text:function(){return Promise.resolve(d.body);},json:function(){return Promise.resolve(JSON.parse(d.body));}});});

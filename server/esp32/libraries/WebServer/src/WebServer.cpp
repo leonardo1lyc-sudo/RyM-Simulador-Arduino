@@ -56,7 +56,9 @@ void WebServer::send(int code, const char *type, const String &content) {
 void WebServer::send(int code, const char *type, const uint8_t *content, size_t len) { head(code, type, len); netch::respond(content, len); }
 void WebServer::send_P(int code, PGM_P type, PGM_P content) { send_P(code, type, content, strlen_P(content)); }
 void WebServer::send_P(int code, PGM_P type, PGM_P content, size_t len) {
-  char t[40]; strncpy_P(t, type, sizeof t - 1); t[sizeof t - 1] = 0; head(code, t, len);
+  // el tipo suele ser un literal (en RAM en AVR); el contenido está en flash salvo el cuadro de la cámara
+  char t[40]; strncpy(t, type, sizeof t - 1); t[sizeof t - 1] = 0; head(code, t, len);
+  if ((const void *)content == esp32_ram_buf) { netch::respond((const uint8_t *)content, len); return; }
   uint8_t b[32]; for (size_t i = 0; i < len; i += sizeof b) { size_t k = len - i < sizeof b ? len - i : sizeof b; memcpy_P(b, content + i, k); netch::respond(b, k); }
 }
 void WebServer::sendContent(const String &content) { outS(content); }
