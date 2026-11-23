@@ -988,6 +988,21 @@ $('#boardSel').addEventListener('change', e => {
   applyState({ ...state, board: id });
   if (lost) setHint(`Se quitaron ${lost} cable${lost > 1 ? 's' : ''} conectado${lost > 1 ? 's' : ''} a pines que el ${BOARDS[id].name} no tiene.`);
 });
+/* Descarga del sketch como .ino (el IDE de Arduino lo abre y pide crear su carpeta) */
+function sketchName(code){
+  const m = code.match(/^\s*\/\/\s*(.+)$/m);
+  const base = (m ? m[1] : 'sketch').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+  return (/^[A-Za-z]/.test(base) ? base : 'sketch_' + base).replace(/_$/, '') || 'sketch';
+}
+function downloadIno(){
+  const code = editor.state.doc.toString();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([code], { type: 'text/plain;charset=utf-8' }));
+  a.download = sketchName(code) + '.ino';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+$('#download').addEventListener('click', downloadIno);
 exSel.addEventListener('change', e => { if (e.target.value) { applyState(exampleState(e.target.value)); e.target.value = ''; } });
 
 /* ======================= Arranque ======================= */
