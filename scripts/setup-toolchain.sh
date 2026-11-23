@@ -5,7 +5,8 @@
 set -eu
 cd "$(dirname "$0")/.."
 T=toolchain
-if [ -x "$T/bin/avr-gcc" ]; then echo "toolchain/ ya existe"; exit 0; fi
+# reutiliza toolchain/ solo si ya trae las dos familias (una copia antigua de la caché puede no tener el ATmega2560)
+if [ -x "$T/bin/avr-gcc" ] && ls "$T"/lib/gcc/avr/*/device-specs/specs-atmega2560 >/dev/null 2>&1; then echo "toolchain/ ya existe"; exit 0; fi
 rm -rf "$T" .toolchain-tmp && mkdir -p .toolchain-tmp
 ARDUINO_URL="https://downloads.arduino.cc/tools/avr-gcc-7.3.0-atmel3.6.1-arduino7-x86_64-pc-linux-gnu.tar.bz2"
 ZAK_URL="https://github.com/ZakKemble/avr-gcc-build/releases/download/v14.1.0-1/avr-gcc-14.1.0-x64-linux.tar.bz2"
