@@ -13,6 +13,7 @@ import { HD44780, PCF8574Lcd, I2CBus } from './lcd.js';
 import { TYPES, LIBRARY, LED_COLORS, RES_VALUES, fmt, fmtOhm, icon, ldrOhms } from './components.js';
 import { SSD1306, oledImage } from './modules.js';
 import { EXAMPLES } from './examples.js';
+import { initAI } from './ai.js';
 import { listLibraries, saveLibrary, deleteLibrary, importZip, importFiles } from './libs.js';
 
 const $ = s => document.querySelector(s);
@@ -936,7 +937,7 @@ $('#btForm').addEventListener('submit', e => {
 /* ======================= Pestañas y librerías ======================= */
 for (const t of document.querySelectorAll('[data-tab]')) t.addEventListener('click', () => {
   for (const o of document.querySelectorAll('[data-tab]')) o.setAttribute('aria-selected', o === t);
-  $('#codeView').hidden = t.dataset.tab !== 'code'; $('#libView').hidden = t.dataset.tab !== 'libs';
+  $('#codeView').hidden = t.dataset.tab !== 'code'; $('#libView').hidden = t.dataset.tab !== 'libs'; $('#aiView').hidden = t.dataset.tab !== 'ai'; $('.side').classList.toggle('ai-on', t.dataset.tab === 'ai');
   if (t.dataset.tab === 'libs') renderLibs();
 });
 let builtinLibs = null;
@@ -1008,5 +1009,6 @@ exSel.addEventListener('change', e => { if (e.target.value) { applyState(example
 /* ======================= Arranque ======================= */
 renderLibrary();
 applyState(loadState() || exampleState('completo'));
+initAI({ TYPES, BOARDS, getState: () => state, applyState, wireColor: (a, b, i) => { const s = a + b; if (/GND|:gnd|:VSS|:K\b/.test(s)) return '#212121'; if (/5V|3V3|IOREF|VIN|:vcc|:VCC|:VDD/.test(s)) return '#e53935'; return ['#2e7d32', '#f9a825', '#1565c0', '#ef6c00', '#8e24aa'][i % 5]; } });
 requestAnimationFrame(t => { lastFrame = t; requestAnimationFrame(frame); });
 window.__banco = { TYPES, get state(){ return state; }, simDevs, refresh: () => { elecDirty = true; dispDirty = true; }, btSend: t => { const d = btDev(); return d ? d.send(t) : false; }, get uno(){ return uno; }, io, lcdModels, servoAngles, compileAndRun, applyState, exampleState, get display(){ return display; }, setPressed, pressKey, listLibraries, saveLibrary };

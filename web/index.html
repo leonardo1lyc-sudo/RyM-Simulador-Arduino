@@ -57,6 +57,7 @@
     <div class="tabs" role="tablist">
       <button role="tab" data-tab="code" aria-selected="true">sketch.ino <span id="codeState"></span></button>
       <button role="tab" data-tab="libs" aria-selected="false">Librerías <span id="libCount"></span></button>
+      <button role="tab" data-tab="ai" aria-selected="false">✨ Asistente IA</button>
       <span class="spacer"></span>
       <select id="boardSel" aria-label="Placa" title="Placa Arduino"></select>
       <select id="example" aria-label="Cargar ejemplo"></select>
@@ -80,6 +81,34 @@
       <h3>Incluidas en el compilador</h3>
       <ul class="liblist builtin" id="builtinLibs"></ul>
       <p class="note">Las librerías se guardan en este navegador y se envían al compilar. Descarga el .zip desde GitHub (Code → Download ZIP) o desde la página del fabricante: es el mismo formato que «Añadir biblioteca .ZIP» del IDE de Arduino.</p>
+    </div>
+    <div id="aiView" class="view ai" hidden>
+      <details id="aiSetup" class="aisetup">
+        <summary>Configuración de la IA</summary>
+        <label>Proveedor <select id="aiProvider"></select></label>
+        <label>Clave de API <input type="password" id="aiKey" autocomplete="off" spellcheck="false"></label>
+        <label>Modelo <input type="text" id="aiModel" spellcheck="false"></label>
+        <p class="note">Consigue una clave gratis en <a id="aiKeyLink" target="_blank" rel="noopener">Google AI Studio</a> (botón «Create API key»). La clave queda guardada sólo en este navegador y se envía directo al proveedor.</p>
+      </details>
+      <div class="aiout" id="aiOut" aria-live="polite">
+        <div class="aimsg sys">Describe lo que quieres armar y la IA escribe el código y coloca y conecta las piezas en el lienzo. También puedes pedir cambios sobre lo que ya tienes. Ideas:
+          <div class="aiideas">
+            <button type="button" class="btn small" data-ai-idea="Un semáforo con tres LEDs (rojo, amarillo y verde) que cambie solo cada pocos segundos">Semáforo</button>
+            <button type="button" class="btn small" data-ai-idea="Medir distancia con un HC-SR04 y mostrarla en un LCD 16x2 I2C; si está a menos de 10 cm que suene un zumbador">Sensor de distancia</button>
+            <button type="button" class="btn small" data-ai-idea="Controlar un servo con un potenciómetro y mostrar el ángulo por el monitor serie">Servo con potenciómetro</button>
+            <button type="button" class="btn small" data-ai-idea="Estación meteorológica: DHT22 mostrando temperatura y humedad en una pantalla OLED">Estación DHT22 + OLED</button>
+          </div>
+        </div>
+      </div>
+      <form id="aiForm" class="aiform">
+        <textarea id="aiPrompt" rows="3" placeholder="Ej.: quiero que un botón encienda y apague un LED azul…" aria-label="Pedido para la IA"></textarea>
+        <div class="airow">
+          <label class="toggle"><input type="checkbox" id="aiCircuit" checked> Armar el circuito</label>
+          <button type="button" class="btn small" id="aiUndo" hidden>↶ Deshacer</button>
+          <span class="spacer"></span>
+          <button class="btn primary small" id="aiGo">Generar</button>
+        </div>
+      </form>
     </div>
     <div class="serial web" id="webPanel" hidden>
       <div class="serialbar"><b>Navegador (WiFi simulado)</b> <span id="wifiState"></span></div>
