@@ -37,10 +37,11 @@ function setBoard(id){ BRD = BOARDS[id] || BOARDS.uno; BPIN = BRD.terms; NP = BR
 let state = null, sel = null, drawing = null, drag = null;
 const compById = id => state.comps.find(c => c.id === id);
 function rot(x, y, r){ switch (((r % 360) + 360) % 360) { case 90: return [-y, x]; case 180: return [-x, -y]; case 270: return [y, -x]; default: return [x, y]; } }
+function termDef(c, t){ const def = TYPES[c.type]; const o = def.dynTerms ? def.dynTerms(c)[t] : null; return o || def.terms[t]; } // posición que depende de las opciones (p. ej. largo de una tira)
 function termPos(key){
   if (key.startsWith('B:')) { const p = BPIN[key.slice(2)]; return p ? { x: p.x, y: p.y, dx: p.dx, dy: p.dy } : null; }
   const m = /^C(\d+):(\w+)$/.exec(key); if (!m) return null; const c = compById(+m[1]); if (!c) return null;
-  const d = TYPES[c.type].terms[m[2]]; if (!d) return null;
+  const d = termDef(c, m[2]); if (!d) return null;
   const [x, y] = rot(d.x, d.y, c.rot), [dx, dy] = rot(d.dx, d.dy, c.rot);
   return { x: c.x + x, y: c.y + y, dx, dy };
 }
@@ -62,9 +63,20 @@ function rebuildCircuit(){
   for (const k of keys) parent.set(k, k);
   for (const net of BRD.nets) for (const k of net.slice(1)) union('B:' + net[0], 'B:' + k);
   for (const w of state.wires) if (parent.has(w.a) && parent.has(w.b)) union(w.a, w.b);
+  // protoboards: tiras internas y patas apoyadas sobre un agujero
+  const holes = new Map(), isHole = new Set();
+  for (const c of state.comps) {
+    const def = TYPES[c.type]; if (def.nets) for (const g of def.nets(c)) for (const t of g.slice(1)) union(`C${c.id}:${g[0]}`, `C${c.id}:${t}`);
+    if (def.breadboard) for (const t in def.terms) { const k = `C${c.id}:${t}`, p = termPos(k); isHole.add(k); holes.set(`${Math.round(p.x)},${Math.round(p.y)}`, k); }
+  }
+  if (holes.size) for (const c of state.comps) if (!TYPES[c.type].breadboard) for (const t in TYPES[c.type].terms) {
+    const k = `C${c.id}:${t}`, p = termPos(k), hx = Math.round(p.x / 10) * 10, hy = Math.round(p.y / 10) * 10;
+    const h = Math.abs(p.x - hx) <= 4 && Math.abs(p.y - hy) <= 4 && holes.get(`${hx},${hy}`); if (h) union(k, h);
+  }
+  const live = new Set(); for (const k of keys) if (!isHole.has(k)) live.add(find(k)); // tiras vacías de la protoboard: fuera del sistema
   const gnd = find('B:GND.1'); const idx = new Map(); circuit.map = new Map(); let n = 0;
   const count = new Map();
-  for (const k of keys) { const r = find(k); count.set(r, (count.get(r) || 0) + 1); if (r === gnd) { circuit.map.set(k, -1); continue; } if (!idx.has(r)) idx.set(r, n++); circuit.map.set(k, idx.get(r)); }
+  for (const k of keys) { const r = find(k); if (!isHole.has(k)) count.set(r, (count.get(r) || 0) + 1); if (r === gnd) { circuit.map.set(k, -1); continue; } if (!live.has(r)) { circuit.map.set(k, -2); continue; } if (!idx.has(r)) idx.set(r, n++); circuit.map.set(k, idx.get(r)); }
   circuit.wired = new Set(keys.filter(k => count.get(find(k)) > 1));
   circuit.n = n; circuit.ver = structVer; elecDirty = true;
   mapDevices();
@@ -98,6 +110,8 @@ function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
     const driven = new Map(); for (let p = 0; p < NP; p++) if (pinV[p] !== undefined) { const i = node('B:' + pinName(p)); if (i >= 0 && !driven.has(i)) driven.set(i, pinV[p] / (BRD.vio || 5)); else if (i === -1) driven.set(-1, 0); }
     const prev = i => { usedPrev = true; return i < 0 || !prevV ? 0 : prevV[i] || 0; };
     const E = {
+      dt: mode.dt ?? (running ? 1e-4 : 0), // paso de tiempo para condensadores (0 = detenido: circuito abierto)
+      isrc: (f, t, I) => { if (f >= 0) b[f] -= I; if (t >= 0) b[t] += I; }, // fuente de corriente de f a t
       src: (a, g, Vs, R) => { const gg = 1 / Math.max(0.01, R); G2(a, g, gg); if (a >= 0) b[a] += Vs * gg; if (g >= 0) b[g] -= Vs * gg; },
       prev,
       level: i => driven.has(i) ? driven.get(i) : i < 0 ? 0 : (prev(i) > 2.5 ? 1 : 0),
@@ -146,7 +160,7 @@ const isFloating = (sol, key) => { const n = circuit.node(key); return n >= 0 &&
 let uno = null, running = false, hexLoaded = null, lastFrame = 0, speed = 1;
 const track = Array.from({ length: MAXP }, () => ({ high: 0, edge: 0, toggles: 0 }));
 let frameStart = 0;
-const devices = { servos: [], lcds: [], buzzers: [], i2c: [], sim: [] };
+const devices = { servos: [], lcds: [], buzzers: [], i2c: [], sim: [], step: [] };
 const simDevs = new Map(); // id de componente -> modelo de dispositivo (modules.js)
 const lcdModels = new Map();  // id de componente -> HD44780
 const servoAngles = new Map();
@@ -159,6 +173,7 @@ function pinOfTerm(key){ // pin del Arduino unido a ese terminal (o -1)
 }
 function mapDevices(){
   devices.servos = []; devices.lcds = []; devices.buzzers = []; devices.i2c = []; devices.sim = [];
+  devices.step = state ? state.comps.filter(c => TYPES[c.type].step) : [];
   pinCache.clear();
   for (const id of [...simDevs.keys()]) if (!state.comps.some(c => c.id === id)) simDevs.delete(id);
   for (const c of state.comps) {
@@ -166,6 +181,7 @@ function mapDevices(){
     const def = TYPES[c.type];
     if (def.device) {
       let d = simDevs.get(c.id); if (!d || d.c !== c) { d = def.device(c, devApi(c)); d.c = c; if (d.reset) d.reset(); simDevs.set(c.id, d); }
+      else if (d.remap) d.remap(); // cables cambiados: vuelve a buscar sus pines
       devices.sim.push(d);
     }
     if (c.type === 'oled') {
@@ -198,6 +214,8 @@ function devApi(c){
   const T = t => `C${c.id}:${t}`;
   a = {
     pin: t => pinOf(T(t)),
+    node: t => circuit.node(T(t)),
+    nodeOf: (o, t) => circuit.node(`C${o.id}:${t}`),
     powered: (vcc, gnd, min = 4) => !!lastSol && voltage(lastSol, T(vcc)) - voltage(lastSol, T(gnd)) > min,
     state: p => uno ? uno.state[p] : PinState.Input,
     now: () => uno ? uno.cycles : 0,
@@ -243,7 +261,7 @@ function onPin(p, s, old, cyc){
     } else { let v = 0; for (let i = 0; i < 4; i++) v |= hi(d.d[4 + i]) << i; d.lcd.pulse4(rs, v); }
   }
 }
-let lastSol = null, floatWarn = new Set();
+let lastSol = null, floatWarn = new Set(), capCyc = 0;
 function applyInputs(cyc){
   // rebotes del pulsador
   if (bounceQueue.length) {
@@ -256,9 +274,11 @@ function applyInputs(cyc){
     if (on && pin.mode !== 'OUTPUT') { pin.mode = 'OUTPUT'; pin.val = 1; pin.uart = true; elecDirty = true; dispDirty = true; }
     else if (!on && pin.uart) { pin.uart = false; pin.mode = 'INPUT'; pin.val = 0; elecDirty = true; dispDirty = true; }
   });
+  const dtc = Math.max(1e-7, (cyc - capCyc) / FREQ); capCyc = cyc;
   if (!elecDirty) return;
   elecDirty = false;
-  const sol = solve({ pwm: 'inst' }); lastSol = sol;
+  const sol = solve({ pwm: 'inst', dt: dtc }); lastSol = sol;
+  for (const c of devices.step) if (TYPES[c.type].step(c, t => voltage(sol, `C${c.id}:${t}`), dtc)) { elecDirty = true; dispDirty = true; } // condensadores cargándose
   for (const d of devices.sim) if (d.update && d.update(t => voltage(sol, `C${d.c.id}:${t}`))) { elecDirty = true; dispDirty = true; }
   for (let p = 0; p < NP; p++) {
     const key = 'B:' + pinName(p); const v = voltage(sol, key);
@@ -293,11 +313,12 @@ function startSim(hex){
   uno.onSpi = b => { let r = 0xFF; for (const d of devices.sim) if (d.onSpi) { const v = d.onSpi(b); if (typeof v === 'number') r &= v; } return r; };
   for (const d of simDevs.values()) if (d.reset) d.reset();
   for (const c of state.comps) if (c._oled) c._oled.reset();
-  floatWarn.clear(); elecDirty = true; frameStart = 0; running = true; speed = 1;
+  for (const c of state.comps) if (TYPES[c.type].step) c._vc = 0; // condensadores descargados
+  floatWarn.clear(); elecDirty = true; frameStart = 0; running = true; speed = 1; capCyc = uno.cycles;
   lastFrame = performance.now();
   setStatus('run');
 }
-function stopSim(){ running = false; uno = null; esp = null; $('#webView').srcdoc = ''; updateWebPanel(); for (const d of simDevs.values()) if (d.reset) d.reset(); io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; p.uart = false; }); elecDirty = true; setStatus('stop'); stopTone(); }
+function stopSim(){ running = false; uno = null; esp = null; $('#webView').srcdoc = ''; updateWebPanel(); for (const d of simDevs.values()) if (d.reset) d.reset(); if (state) for (const c of state.comps) if (TYPES[c.type].step) c._vc = 0; io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; p.uart = false; }); elecDirty = true; setStatus('stop'); stopTone(); }
 function setStatus(s, extra){
   const st = $('#status'), run = $('#run');
   st.className = 'chip' + (s === 'run' ? ' on' : s === 'error' ? ' bad' : s === 'busy' ? ' busy' : '');
@@ -529,21 +550,26 @@ function stopTone(){ if (osc) { try { osc.stop(); } catch {} osc = null; } }
 $('#sound').onclick = () => { soundOn = !soundOn; $('#sound').setAttribute('aria-pressed', soundOn); $('#sound').textContent = soundOn ? '🔊 Sonido' : '🔇 Sonido'; if (!soundOn) stopTone(); else if (!audio) { try { audio = new AudioContext(); } catch {} } };
 
 /* ======================= Dibujo de componentes ======================= */
+// capas para protoboards: su dibujo y sus agujeros quedan debajo de los componentes (que se pueden agarrar encima)
+const layerBefore = (id, ref) => { let g = document.getElementById(id); if (!g) { g = document.createElementNS('http://www.w3.org/2000/svg', 'g'); g.id = id; ref.before(g); } return g; };
+const bbLayer = layerBefore('bbLayer', $('#compLayer')), holeLayer = layerBefore('holeLayer', $('#compLayer'));
 function renderComps(){
-  let s = '';
+  let s = '', u = '';
   for (const c of state.comps) {
-    const t = TYPES[c.type]; const [bx, by, bw, bh] = t.box;
+    const t = TYPES[c.type]; const [bx, by, bw, bh] = typeof t.box === 'function' ? t.box(c) : t.box;
     const isSel = sel && sel.kind === 'comp' && sel.id === c.id;
-    s += `<g class="comp${isSel ? ' sel' : ''}" data-comp="${c.id}" transform="translate(${c.x},${c.y}) rotate(${c.rot})"><rect class="outline" x="${bx - 4}" y="${by - 4}" width="${bw + 8}" height="${bh + 8}" rx="6"/>${t.svg(c)}</g>`;
+    const g = `<g class="comp${isSel ? ' sel' : ''}" data-comp="${c.id}" transform="translate(${c.x},${c.y}) rotate(${c.rot})"><rect class="outline" x="${bx - 4}" y="${by - 4}" width="${bw + 8}" height="${bh + 8}" rx="6"/>${t.svg(c)}</g>`;
+    if (t.under) u += g; else s += g;
   }
-  $('#compLayer').innerHTML = s;
+  $('#compLayer').innerHTML = s; bbLayer.innerHTML = u;
   renderTerms(); renderWires(); dispDirty = true;
 }
 function renderTerms(){
   let s = '';
   for (const id in BPIN) { const p = BPIN[id]; s += `<circle class="term" data-term="B:${id}" cx="${p.x}" cy="${p.y}" r="7"><title>${pinTitle(id)}</title></circle>`; }
-  for (const c of state.comps) for (const t in TYPES[c.type].terms) { const k = `C${c.id}:${t}`, p = termPos(k); s += `<circle class="term" data-term="${k}" cx="${p.x}" cy="${p.y}" r="6.5"><title>${esc(c.name)}: ${esc(TYPES[c.type].terms[t].name)}</title></circle>`; }
-  $('#termLayer').innerHTML = s;
+  let h = '';
+  for (const c of state.comps) { const r = TYPES[c.type].termR || 6.5; let o = ''; for (const t in TYPES[c.type].terms) { const k = `C${c.id}:${t}`, p = termPos(k); o += `<circle class="term" data-term="${k}" cx="${p.x}" cy="${p.y}" r="${r}"><title>${esc(c.name)}: ${esc(TYPES[c.type].terms[t].name)}</title></circle>`; } if (TYPES[c.type].under) h += o; else s += o; }
+  $('#termLayer').innerHTML = s; holeLayer.innerHTML = h;
 }
 function wirePath(a, pts, b){
   if (!pts.length) { const dist = Math.hypot(b.x - a.x, b.y - a.y); const k = Math.min(90, dist * 0.4 + 18); return `M${a.x} ${a.y} C${a.x + a.dx * k} ${a.y + a.dy * k} ${b.x + b.dx * k} ${b.y + b.dy * k} ${b.x} ${b.y}`; }
@@ -667,7 +693,7 @@ svg.addEventListener('pointerdown', e => {
     svg.setPointerCapture(e.pointerId); if (!sel || sel.id !== c.id || sel.kind !== 'comp') { sel = { kind: 'comp', id: c.id }; updateProps(true); setHint(); }
     e.preventDefault(); return;
   }
-  if (comp) { const c = compById(+comp.dataset.comp); drag = { kind: 'move', c, ox: pt.x - c.x, oy: pt.y - c.y, moved: false }; svg.setPointerCapture(e.pointerId); select({ kind: 'comp', id: c.id }); return; }
+  if (comp) { const c = compById(+comp.dataset.comp); drag = { kind: 'move', c, ox: pt.x - c.x, oy: pt.y - c.y, moved: false, riders: TYPES[c.type].breadboard ? ridersOf(c) : [] }; svg.setPointerCapture(e.pointerId); select({ kind: 'comp', id: c.id }); return; }
   if (wire) { select({ kind: 'wire', id: +wire.dataset.wire }); return; }
   if (sel) select(null);
 });
@@ -677,7 +703,10 @@ svg.addEventListener('pointermove', e => {
   if (!drag) return;
   if (drag.kind === 'move') {
     const nx = clamp(snap(pt.x - drag.ox), 20, BRD.canvasW - 20), ny = clamp(snap(pt.y - drag.oy), 20, 680);
-    if (nx !== drag.c.x || ny !== drag.c.y) { drag.c.x = nx; drag.c.y = ny; drag.moved = true; q(`[data-comp="${drag.c.id}"]`).setAttribute('transform', `translate(${nx},${ny}) rotate(${drag.c.rot})`); renderTerms(); renderWires(); }
+    if (nx !== drag.c.x || ny !== drag.c.y) {
+      for (const r of drag.riders) { r.x += nx - drag.c.x; r.y += ny - drag.c.y; q(`[data-comp="${r.id}"]`).setAttribute('transform', `translate(${r.x},${r.y}) rotate(${r.rot})`); } // lo que está enchufado se mueve con la protoboard
+      drag.c.x = nx; drag.c.y = ny; drag.moved = true; q(`[data-comp="${drag.c.id}"]`).setAttribute('transform', `translate(${nx},${ny}) rotate(${drag.c.rot})`); renderTerms(); renderWires();
+    }
   } else if (drag.kind === 'joy') {
     const c = drag.c; let [lx, ly] = rot(pt.x - c.x, pt.y - c.y, -c.rot); lx += 4;
     let x = lx / 18, y = -ly / 18; const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
@@ -687,7 +716,8 @@ svg.addEventListener('pointermove', e => {
 const endDrag = () => { if (!drag) return; if (drag.kind === 'boot') { bootPressed = false; elecDirty = true; dispDirty = true; drag = null; return; } if (drag.kind === 'btn' && !drag.c.props.latch) setPressed(drag.c, false);
   if (drag.kind === 'key') pressKey(drag.c, -1);
   if (drag.kind === 'joy') { drag.c.props.x = 0; drag.c.props.y = 0; elecDirty = true; dispDirty = true; } // el resorte lo centra
-  if (drag.kind === 'joybtn') { drag.c.props.pressed = false; elecDirty = true; dispDirty = true; } if (drag.kind !== 'btn') scheduleSave(); drag = null; };
+  if (drag.kind === 'joybtn') { drag.c.props.pressed = false; elecDirty = true; dispDirty = true; }
+  if (drag.kind === 'move' && drag.moved && state.comps.some(c => TYPES[c.type].breadboard)) { structChanged(); dispDirty = true; } /* conexiones por protoboard */ if (drag.kind !== 'btn') scheduleSave(); drag = null; };
 svg.addEventListener('pointerup', endDrag); svg.addEventListener('pointercancel', endDrag);
 svg.addEventListener('wheel', e => { const k = e.target.closest('[data-ctrl="pot"]'); if (!k) return; e.preventDefault(); const c = compById(+k.dataset.id); c.props.pos = clamp(c.props.pos - Math.sign(e.deltaY) * 0.03, 0, 1); elecDirty = true; dispDirty = true; scheduleSave(); }, { passive: false });
 
@@ -697,6 +727,10 @@ function deleteSel(){
   if (sel.kind === 'wire') state.wires = state.wires.filter(w => w.id !== sel.id);
   else { const pre = `C${sel.id}:`; state.comps = state.comps.filter(c => c.id !== sel.id); state.wires = state.wires.filter(w => !w.a.startsWith(pre) && !w.b.startsWith(pre)); lcdModels.delete(sel.id); }
   sel = null; structChanged(); renderComps(); updateProps(true); setHint();
+}
+function ridersOf(bb){ // componentes con alguna pata en un agujero de esta protoboard
+  const pos = new Set(Object.keys(TYPES[bb.type].terms).map(t => { const p = termPos(`C${bb.id}:${t}`); return `${Math.round(p.x)},${Math.round(p.y)}`; }));
+  return state.comps.filter(c => c !== bb && !TYPES[c.type].breadboard && Object.keys(TYPES[c.type].terms).some(t => { const p = termPos(`C${c.id}:${t}`); return pos.has(`${Math.round(p.x / 10) * 10},${Math.round(p.y / 10) * 10}`); }));
 }
 function rotateSel(){ if (!sel || sel.kind !== 'comp') return; const c = compById(sel.id); c.rot = (c.rot + 90) % 360; structChanged(); renderComps(); }
 $('#del').onclick = deleteSel; $('#rotate').onclick = rotateSel;
