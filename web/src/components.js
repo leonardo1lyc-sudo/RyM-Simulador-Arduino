@@ -1,6 +1,7 @@
 // Definición de componentes: terminales, aspecto (SVG) y modelo eléctrico.
 import { MODULES } from './modules.js';
 import { KITS } from './kits.js';
+import { KITS2 } from './kits2.js';
 export const LED_COLORS = {
   rojo:    { c: '#ff3b30', off: '#8a2a24', vf: 1.8 },
   naranja: { c: '#ff8a1f', off: '#8a4a1a', vf: 1.9 },
@@ -171,16 +172,16 @@ export const TYPES = {
     },
     elec(c, T, E){ E.res(T('VCC'), T('GND'), 5000); E.res(T('SDA'), T('VCC'), 10000); E.res(T('SCL'), T('VCC'), 10000); },
   },
-  ...MODULES, ...KITS,
+  ...MODULES, ...KITS, ...KITS2,
 };
 
 export const LIBRARY = [
   { cat: 'Salidas', items: ['led', 'rgb', 'led2', 'traffic', 'laser', 'buzzer', 'buzza', 'buzzp', 'servo', 'motor', 'l298n'] },
   { cat: 'Relés', items: ['relay', 'relay2', 'relay4', 'relay8'] },
-  { cat: 'Entradas', items: ['btn', 'kybtn', 'touch', 'sw', 'pot', 'joy'] },
+  { cat: 'Entradas', items: ['btn', 'kybtn', 'touch', 'sw', 'pot', 'joy', 'keypad', 'encoder'] },
   { cat: 'Sensores', items: ['sr04', 'irobst', 'pir', 'dht', 'soil', 'rain', 'water', 'ntc', 'tempd', 'ldr', 'ldrmod', 'flame', 'gas', 'sound', 'tilt', 'knock', 'reed', 'hall', 'hallan', 'line'] },
-  { cat: 'Pantallas', items: ['lcd', 'lcdi2c', 'oled', 'max7219', { soon: true, name: 'Display 7 seg.' }, { soon: true, name: 'TM1637 4 dígitos' }] },
-  { cat: 'Comunicación', items: ['hc05'] },
+  { cat: 'Pantallas', items: ['lcd', 'lcdi2c', 'oled', 'max7219', 'seg7', 'tm1637'] },
+  { cat: 'Comunicación', items: ['hc05', 'irrx', 'irremote'] },
   { cat: 'Pasivos y energía', items: ['res', 'battery', { soon: true, name: 'Condensador' }] },
 ];
 

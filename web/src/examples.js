@@ -885,4 +885,157 @@ void loop() {
 }
 `,
   },
+  contador7: {
+    title: 'Contador en TM1637 (4 dígitos)',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'tm1637', x: 820, y: 300, rot: 0, name: 'TM1', props: {} }],
+        wires: [
+          { id: 10, a: 'C1:CLK', b: 'B:D2', pts: [], color: SIG[0] },
+          { id: 11, a: 'C1:DIO', b: 'B:D3', pts: [], color: SIG[1] },
+          { id: 12, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 13, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+        ],
+        counters: { tm1637: 1 },
+      };
+    },
+    code: `// Contador en un display TM1637 de 4 dígitos (librería TM1637Display).
+#include <TM1637Display.h>
+
+TM1637Display pantalla(2, 3); // CLK, DIO
+int n = 0;
+
+void setup() {
+  pantalla.setBrightness(5);
+}
+
+void loop() {
+  pantalla.showNumberDecEx(n, 0b01000000, true); // con los dos puntos encendidos
+  n = (n + 1) % 10000;
+  delay(200);
+}
+`,
+  },
+  teclado: {
+    title: 'Teclado 4x4 (librería Keypad)',
+    build(){
+      const w = [], rows = ['D9', 'D8', 'D7', 'D6'], cols = ['D5', 'D4', 'D3', 'D2'];
+      rows.forEach((p, i) => w.push({ id: 10 + i, a: 'C1:R' + (i + 1), b: 'B:' + p, pts: [], color: SIG[0] }));
+      cols.forEach((p, i) => w.push({ id: 20 + i, a: 'C1:C' + (i + 1), b: 'B:' + p, pts: [], color: SIG[1] }));
+      return { comps: [{ id: 1, type: 'keypad', x: 820, y: 320, rot: 0, name: 'KP1', props: { key: -1 } }], wires: w, counters: { keypad: 1 } };
+    },
+    code: `// Teclado matricial 4x4: muestra cada tecla en el monitor serie.
+// Haz clic (y mantén) sobre una tecla del teclado.
+#include <Keypad.h>
+
+const byte FILAS = 4, COLUMNAS = 4;
+char teclas[FILAS][COLUMNAS] = {
+  {'1', '2', '3', 'A'},
+  {'4', '5', '6', 'B'},
+  {'7', '8', '9', 'C'},
+  {'*', '0', '#', 'D'}
+};
+byte pinesFilas[FILAS] = {9, 8, 7, 6};
+byte pinesColumnas[COLUMNAS] = {5, 4, 3, 2};
+Keypad teclado = Keypad(makeKeymap(teclas), pinesFilas, pinesColumnas, FILAS, COLUMNAS);
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Pulsa una tecla");
+}
+
+void loop() {
+  char t = teclado.getKey();
+  if (t) {
+    Serial.print("Tecla: ");
+    Serial.println(t);
+  }
+}
+`,
+  },
+  encoder: {
+    title: 'Encoder rotativo KY-040',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'encoder', x: 820, y: 300, rot: 0, name: 'ENC1', props: { pos: 0, pressed: false, contact: false, latch: false, bounce: false } }],
+        wires: [
+          { id: 10, a: 'C1:CLK', b: 'B:D2', pts: [], color: SIG[0] },
+          { id: 11, a: 'C1:DT', b: 'B:D3', pts: [], color: SIG[1] },
+          { id: 12, a: 'C1:SW', b: 'B:D4', pts: [], color: SIG[2] },
+          { id: 13, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 14, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+        ],
+        counters: { encoder: 1 },
+      };
+    },
+    code: `// Encoder rotativo: gira con las flechas ↺ ↻ y pulsa la perilla para volver a cero.
+const int CLK = 2, DT = 3, SW = 4;
+int posicion = 0;
+int ultimoClk;
+
+void setup() {
+  pinMode(CLK, INPUT);
+  pinMode(DT, INPUT);
+  pinMode(SW, INPUT_PULLUP);
+  Serial.begin(9600);
+  ultimoClk = digitalRead(CLK);
+}
+
+void loop() {
+  int clk = digitalRead(CLK);
+  if (clk != ultimoClk && clk == LOW) {          // flanco de bajada de CLK
+    if (digitalRead(DT) != clk) posicion++;      // sentido horario
+    else posicion--;                             // antihorario
+    Serial.print("Posición: ");
+    Serial.println(posicion);
+  }
+  ultimoClk = clk;
+  if (digitalRead(SW) == LOW) {
+    posicion = 0;
+    Serial.println("Cero");
+    delay(200);
+  }
+}
+`,
+  },
+  controlIR: {
+    title: 'Control remoto IR (IRremote)',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'irrx', x: 800, y: 330, rot: 0, name: 'IRX1', props: {} },
+          { id: 2, type: 'irremote', x: 960, y: 300, rot: 0, name: 'CTRL1', props: {} },
+        ],
+        wires: [
+          { id: 10, a: 'C1:S', b: 'B:D11', pts: [], color: SIG[0] },
+          { id: 11, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 12, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+        ],
+        counters: { irrx: 1, irremote: 1 },
+      };
+    },
+    code: `// Control remoto IR: muestra el código de cada botón y prende el LED 13 con el botón 1.
+#include <IRremote.hpp>
+
+const int RECEPTOR = 11;
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(LED_BUILTIN, OUTPUT);
+  IrReceiver.begin(RECEPTOR);
+  Serial.println("Apunta el control y pulsa un botón");
+}
+
+void loop() {
+  if (IrReceiver.decode()) {
+    uint8_t cmd = IrReceiver.decodedIRData.command;
+    Serial.print("Código: 0x");
+    Serial.println(cmd, HEX);
+    if (cmd == 0x0C) digitalWrite(LED_BUILTIN, HIGH);  // botón 1
+    if (cmd == 0x16) digitalWrite(LED_BUILTIN, LOW);   // botón 0
+    IrReceiver.resume();
+  }
+}
+`,
+  },
 };

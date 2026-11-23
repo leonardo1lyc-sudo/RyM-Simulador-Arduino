@@ -9,6 +9,7 @@ Simulador de Arduino en el navegador con **emulación real del ATmega328P y el A
 - **Componentes**: LED (6 colores), LED RGB, resistencia (bandas de color), pulsador (con rebote opcional), interruptor, potenciómetro, fotorresistencia, zumbador (con sonido), servo SG90, LCD 16×2 paralelo (HD44780) y LCD 16×2 I2C (PCF8574).
 - **Módulos**: ultrasonido HC-SR04, DHT22/DHT11, PIR, joystick KY-023, sensor de llama, sensor de gas MQ-2, módulo relé, driver L298N con motor DC, batería, OLED SSD1306 I2C, matriz 8×8 MAX7219 y Bluetooth HC-05/HC-06 (con panel «Celular» para enviar y recibir).
 - **Kit de sensores (KY) y otros módulos**: botón KY-004, inclinación KY-020, reed KY-021, Hall KY-003 y lineal KY-024, golpe KY-031, táctil TTP223, obstáculo IR, seguidor de línea KY-033, termistor KY-013 y KY-028, LDR KY-018, micrófono KY-038, humedad de suelo, lluvia, nivel de agua, láser KY-008, zumbador activo KY-012 y pasivo KY-006, LED de 2 colores KY-011, semáforo y relés de 1, 2, 4 y 8 canales.
+- **Pantallas y entradas**: display de 7 segmentos (cátodo o ánodo común), TM1637 de 4 dígitos (librería TM1637Display), teclado matricial 4x4 (Keypad), encoder rotativo KY-040, receptor IR VS1838B con control remoto NEC (IRremote).
 - **Librerías incluidas** además de las del núcleo: Servo, LiquidCrystal, DHT sensor library, Adafruit SSD1306, Adafruit GFX, Adafruit BusIO, Adafruit Unified Sensor y LedControl.
 - **Emulación real**: CPU AVR, timers y PWM, ADC, USART (monitor serie bidireccional), I2C, SPI, EEPROM e interrupciones externas. En el Mega: timers 0–5, cuatro USART, ADC de 16 canales e INT0–INT7.
 - **Librerías**: incluidas Servo, LiquidCrystal, Wire, SPI, EEPROM y SoftwareSerial. El usuario puede **cargar las suyas** como `.zip` (el mismo formato que «Añadir biblioteca .ZIP» del IDE) o como archivos `.h/.cpp`; se guardan en el navegador y se envían al compilar.
@@ -39,6 +40,7 @@ npm test                      # compilador (avr-gcc)
 node test/e2e.cjs             # extremo a extremo con Playwright, con el servidor en marcha
 node test/e2e-modules.cjs     # módulos de la tanda 1 (sensores, relé, motor, pantallas, Bluetooth)
 node test/e2e-kits.cjs        # módulos del kit KY, humedad de suelo, agua, relés, semáforo
+node test/e2e-kits2.cjs       # 7 segmentos, TM1637, teclado 4x4, encoder, control IR
 node test/e2e-boards.cjs      # placas Nano y Mega 2560 (PWM de los 6 timers, A8, INT4, Serial1, I2C en 20/21)
 ```
 
@@ -50,6 +52,7 @@ web/src/emulator.js    ATmega328P y ATmega2560 con avr8js (puertos, timers, ADC,
 web/src/boards.js      placas Uno, Nano y Mega: pines Arduino ↔ puerto/bit, terminales y dibujo
 web/src/components.js  componentes: terminales, dibujo y modelo eléctrico
 web/src/kits.js        módulos del kit KY, relés de varios canales, semáforo, suelo/lluvia/agua
+web/src/kits2.js       7 segmentos, TM1637, teclado 4x4, encoder KY-040, receptor y control IR
 web/src/modules.js     módulos (sensores, relé, L298N, OLED, MAX7219, HC-05) y sus modelos con temporización exacta
 web/src/lcd.js         controlador HD44780, mochila PCF8574 y bus I2C
 web/src/libs.js        librerías del usuario (zip, IndexedDB)

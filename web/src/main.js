@@ -202,6 +202,8 @@ function devApi(c){
     running: () => running && !!uno,
     serialWrite: (bytes, n = 0) => { if (uno) { uno.serialWrite(bytes, n); if (!n) rxFlash = performance.now(); } },
     board: () => BRD,
+    setInput: (p, h) => { if (uno) uno.setInput(p, h); },
+    others: () => devices.sim,
     click: () => playClick(),
   };
   apiCache.set(c, a); return a;
@@ -602,6 +604,7 @@ function setHint(msg){
     : sel && sel.kind === 'comp' ? 'Arrastra para mover. R gira, Supr elimina.' : 'Clic en un terminal para empezar un cable. Arrastra los componentes para moverlos.';
 }
 function select(s){ sel = s; renderComps(); updateProps(true); setHint(); }
+function pressKey(c, k){ c.props.key = k; elecDirty = true; dispDirty = true; const d = simDevs.get(c.id); if (d && d.press) d.press(); }
 function setPressed(c, pressed){
   if (c.props.pressed === pressed) return;
   c.props.pressed = pressed;
@@ -631,7 +634,8 @@ svg.addEventListener('pointerdown', e => {
   if (ctrl) {
     if (ctrl.dataset.ctrl === 'reset') { if (hexLoaded) startSim(); return; }
     const c = compById(+ctrl.dataset.id);
-    if (ctrl.dataset.ctrl === 'tap') { const d = simDevs.get(c.id); if (d && d.tap) d.tap(); dispDirty = true; }
+    if (ctrl.dataset.ctrl === 'tap') { const d = simDevs.get(c.id); if (d && d.tap) d.tap(ctrl.dataset); dispDirty = true; }
+    else if (ctrl.dataset.ctrl === 'key') { pressKey(c, +ctrl.dataset.key); drag = { kind: 'key', c }; }
     else if (ctrl.dataset.ctrl === 'joy') {
       const [lx, ly] = rot(pt.x - c.x, pt.y - c.y, -c.rot);
       const kx = c.props.x * 16 - 4, ky = -c.props.y * 16;
@@ -662,6 +666,7 @@ svg.addEventListener('pointermove', e => {
   } else if (drag.kind === 'pot') { drag.c.props.pos = clamp(drag.pos + ((drag.y - pt.y) + (pt.x - drag.x)) / 160, 0, 1); elecDirty = true; dispDirty = true; const r = $('#pPos'); if (r) r.value = Math.round(drag.c.props.pos * 1000); }
 });
 const endDrag = () => { if (!drag) return; if (drag.kind === 'btn' && !drag.c.props.latch) setPressed(drag.c, false);
+  if (drag.kind === 'key') pressKey(drag.c, -1);
   if (drag.kind === 'joy') { drag.c.props.x = 0; drag.c.props.y = 0; elecDirty = true; dispDirty = true; } // el resorte lo centra
   if (drag.kind === 'joybtn') { drag.c.props.pressed = false; elecDirty = true; dispDirty = true; } if (drag.kind !== 'btn') scheduleSave(); drag = null; };
 svg.addEventListener('pointerup', endDrag); svg.addEventListener('pointercancel', endDrag);
@@ -904,4 +909,4 @@ exSel.addEventListener('change', e => { if (e.target.value) { applyState(example
 renderLibrary();
 applyState(loadState() || exampleState('completo'));
 requestAnimationFrame(t => { lastFrame = t; requestAnimationFrame(frame); });
-window.__banco = { TYPES, get state(){ return state; }, simDevs, refresh: () => { elecDirty = true; dispDirty = true; }, btSend: t => { const d = btDev(); return d ? d.send(t) : false; }, get uno(){ return uno; }, io, lcdModels, servoAngles, compileAndRun, applyState, exampleState, get display(){ return display; }, setPressed, listLibraries, saveLibrary };
+window.__banco = { TYPES, get state(){ return state; }, simDevs, refresh: () => { elecDirty = true; dispDirty = true; }, btSend: t => { const d = btDev(); return d ? d.send(t) : false; }, get uno(){ return uno; }, io, lcdModels, servoAngles, compileAndRun, applyState, exampleState, get display(){ return display; }, setPressed, pressKey, listLibraries, saveLibrary };

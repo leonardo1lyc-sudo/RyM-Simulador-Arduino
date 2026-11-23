@@ -25,4 +25,13 @@ fetch adafruit/Adafruit_SSD1306 libraries/Adafruit_SSD1306 d94f699451d72286357cb
 fetch adafruit/Adafruit-GFX-Library libraries/Adafruit_GFX 85ce269b270eb1241e36a22cceec2c5e0905f48c
 fetch adafruit/Adafruit_BusIO libraries/Adafruit_BusIO 3b8364267c3ee6e16bad91bc2101aefbd5b5915f
 fetch wayoda/LedControl libraries/LedControl 2714e8b1ca1a8fcc7f6b6d5e77025cb5eb702c3e
+# tanda 3: displays, teclado, IR, RFID, reloj, temperatura 1-Wire y paso a paso
+fetch avishorp/TM1637 libraries/TM1637 82214be06742bf187fab4f29aaabb64c289eaae0
+fetch Chris--A/Keypad libraries/Keypad d04fa7c44d783f356de9dc8227e98fa034600700
+fetch Arduino-IRremote/Arduino-IRremote libraries/IRremote 498dc591b255d8ba2e239c875804bdab2ab0fe91
+fetch miguelbalboa/rfid libraries/MFRC522 0456ce0cf149c8a5393fff03b1d8a9a8d6236437
+fetch Makuna/Rtc libraries/Rtc 7928697ff4a5e4ae55824c47b961aac0503720d9
+fetch PaulStoffregen/OneWire libraries/OneWire 72249e22ef9092b0750e303d266199965a89e500
+fetch milesburton/Arduino-Temperature-Control-Library libraries/DallasTemperature 3f570bbe2d0ad3cae55663cfaec1fedbc5b4fa50
+fetch arduino-libraries/Stepper libraries/Stepper cee62bb4de4519f05b68f2a5732cd20e2f324568
 echo "vendor/ listo"
