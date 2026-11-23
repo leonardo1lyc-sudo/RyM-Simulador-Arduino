@@ -532,3 +532,6 @@ export function oledImage(m, powered){
   g.putImageData(img, 0, 0);
   return cv.toDataURL();
 }
+
+// Utilidades de dibujo compartidas con kits.js
+export { header, pcb, hole, smdLed, glowAttr, tiny, label, fmt, US };

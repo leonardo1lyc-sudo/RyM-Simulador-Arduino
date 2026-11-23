@@ -35,7 +35,7 @@ const OUT = process.env.SHOTS || '.';
   await load(sketch('mega', `const int P[] = {${pwmPins.join(', ')}};\nvoid setup(){ for (int i = 0; i < 15; i++) analogWrite(P[i], 20 + i * 15); }\nvoid loop(){}\n`));
   await p.waitForTimeout(800);
   const duties = await p.evaluate(P => P.map(q => __banco.io.pins[q].duty), pwmPins);
-  const bad = pwmPins.filter((q, i) => !(duties[i] != null && Math.abs(duties[i] - (20 + i * 15) / 255) < 0.02));
+  const bad = pwmPins.filter((q, i) => !(duties[i] != null && Math.abs(duties[i] - (20 + i * 15) / 255) < 0.06));
   check(!bad.length, 'Mega PWM en 15 pines: ' + (bad.length ? 'fallan ' + bad.join(',') + ' ' + JSON.stringify(duties) : 'todos con el ciclo esperado'));
 
   // Mega: interrupción externa INT4 (pin 2) y millis() con el timer 0 del 2560

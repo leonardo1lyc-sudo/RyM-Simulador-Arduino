@@ -808,4 +808,81 @@ void loop() {
 }
 `,
   },
+  semaforo: {
+    title: 'Semáforo (módulo de 3 LEDs)',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'traffic', x: 800, y: 300, rot: 0, name: 'SEM1', props: {} }],
+        wires: [
+          { id: 10, a: 'C1:R', b: 'B:D10', pts: [], color: '#e53935' },
+          { id: 11, a: 'C1:Y', b: 'B:D9', pts: [], color: SIG[0] },
+          { id: 12, a: 'C1:G', b: 'B:D8', pts: [], color: SIG[2] },
+          { id: 13, a: 'C1:GND', b: 'B:GND.1', pts: [], color: GND },
+        ],
+        counters: { traffic: 1 },
+      };
+    },
+    code: `// Semáforo: el módulo ya trae las resistencias, se conecta directo a los pines.
+const int ROJO = 10, AMARILLO = 9, VERDE = 8;
+
+void luz(int r, int a, int v, int ms) {
+  digitalWrite(ROJO, r); digitalWrite(AMARILLO, a); digitalWrite(VERDE, v);
+  delay(ms);
+}
+
+void setup() {
+  pinMode(ROJO, OUTPUT); pinMode(AMARILLO, OUTPUT); pinMode(VERDE, OUTPUT);
+}
+
+void loop() {
+  luz(HIGH, LOW, LOW, 3000);   // rojo
+  luz(HIGH, HIGH, LOW, 800);   // rojo + amarillo
+  luz(LOW, LOW, HIGH, 3000);   // verde
+  for (int i = 0; i < 3; i++) { luz(LOW, LOW, HIGH, 300); luz(LOW, LOW, LOW, 300); } // verde titila
+  luz(LOW, HIGH, LOW, 1000);   // amarillo
+}
+`,
+  },
+  riego: {
+    title: 'Riego automático (humedad de suelo + relé)',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'soil', x: 760, y: 470, rot: 0, name: 'SUELO1', props: { hum: 30, threshold: 50 } },
+          { id: 2, type: 'relay2', x: 880, y: 160, rot: 0, name: 'RELE1', props: { trigger: 'low' } },
+        ],
+        wires: [
+          { id: 10, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 11, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+          { id: 12, a: 'C1:AO', b: 'B:A0', pts: [], color: SIG[2] },
+          { id: 13, a: 'C2:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 14, a: 'C2:GND', b: 'B:GND.1', pts: [], color: GND },
+          { id: 15, a: 'C2:IN1', b: 'B:D7', pts: [], color: SIG[1] },
+        ],
+        counters: { soil: 1, relay2: 1 },
+      };
+    },
+    code: `// Riego automático: si la tierra está seca se activa la bomba (relé 1).
+// Cambia la humedad con el control del sensor y mira el relé y el monitor serie.
+const int SENSOR = A0;
+const int BOMBA = 7;      // IN1 del módulo de relés (se activa con LOW)
+const int SECO = 700;     // por encima de este valor la tierra está seca
+
+void setup() {
+  pinMode(BOMBA, OUTPUT);
+  digitalWrite(BOMBA, HIGH); // relé apagado
+  Serial.begin(9600);
+}
+
+void loop() {
+  int lectura = analogRead(SENSOR);   // seco ≈ 1023, mojado ≈ 400
+  bool regar = lectura > SECO;
+  digitalWrite(BOMBA, regar ? LOW : HIGH);
+  Serial.print("Humedad: ");
+  Serial.print(lectura);
+  Serial.println(regar ? "  -> regando" : "  -> ok");
+  delay(500);
+}
+`,
+  },
 };

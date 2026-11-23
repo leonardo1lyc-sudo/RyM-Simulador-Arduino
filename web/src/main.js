@@ -172,6 +172,7 @@ function mapDevices(){
     }
     if (c.type === 'servo') devices.servos.push({ c, sig: pinOfTerm(T('sig')), rise: 0 });
     if (c.type === 'buzzer') devices.buzzers.push({ c, pin: pinOfTerm(T('p')) >= 0 ? pinOfTerm(T('p')) : pinOfTerm(T('n')) });
+    if (def.passive) devices.buzzers.push({ c, pin: pinOfTerm(T(def.passive)) });
     if (c.type === 'lcd' || c.type === 'lcdi2c') { if (!lcdModels.has(c.id)) lcdModels.set(c.id, new HD44780()); }
     if (c.type === 'lcd') devices.lcds.push({ c, lcd: lcdModels.get(c.id), rs: pinOfTerm(T('RS')), e: pinOfTerm(T('E')), d: ['D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7'].map(t => pinOfTerm(T(t))) });
     if (c.type === 'lcdi2c') {
@@ -382,7 +383,7 @@ function renderDynamic(){
       const h = q(`[data-horn="${c.id}"]`); if (h) h.setAttribute('transform', `rotate(${c._ang - 90} 22 0)`);
       const a = q(`[data-angle="${c.id}"]`); if (a) a.textContent = Math.round(c._ang) + '°';
       if (running && !powered(c)) warns.push(`${c.name}: el servo no tiene alimentación. Conecta V+ a 5V y GND a GND.`);
-    } else if (c.type === 'buzzer') {
+    } else if (c.type === 'buzzer' || TYPES[c.type].passive) {
       const d = devices.buzzers.find(b => b.c === c); const f = d && d.pin >= 0 && running ? io.pins[d.pin].freq || 0 : 0;
       const on = f > 30 && f < 20000; const w = q(`[data-waves="${c.id}"]`); if (w) w.setAttribute('opacity', on ? 0.5 + 0.5 * Math.sin(now / 60) ** 2 : 0);
       c._freq = on ? f : 0;
@@ -392,7 +393,7 @@ function renderDynamic(){
     const def = TYPES[c.type];
     if (def.render) def.render(c, renderCtx(c, D, warns, now));
   }
-  const buzz = state.comps.find(c => c.type === 'buzzer' && c._freq);
+  const buzz = state.comps.find(c => (c.type === 'buzzer' || TYPES[c.type].passive || TYPES[c.type].sound) && c._freq);
   if (buzz) playTone(buzz._freq); else stopTone();
   const pinI = D.pinI || [];
   for (let p = 0; p < NP; p++) if (pinI[p] !== undefined && Math.abs(pinI[p]) > 0.04) warns.push(`${pinName(p)}: el pin entrega ${fmt(Math.abs(pinI[p]) * 1000, 0)} mA y el máximo del ${BRD.chipName} es 40 mA. Revisa si hay un corto o falta una resistencia.`);
@@ -417,7 +418,7 @@ function renderDynamic(){
 function renderCtx(c, D, warns, now){
   const T = t => `C${c.id}:${t}`; const api = devApi(c);
   return {
-    q, now, running, warn: w => warns.push(w), V: t => voltage(D.sol, T(t)), powered: api.powered,
+    q, now, running, warn: w => warns.push(w), V: t => voltage(D.sol, T(t)), powered: api.powered, led: id => D.led.get(id),
     wired: t => circuit.wired.has(T(t)),
     drivenBy: t => { const p = pinOf(T(t)); return p >= 0 && io.pins[p].mode === 'OUTPUT' ? p : -1; },
   };
@@ -903,4 +904,4 @@ exSel.addEventListener('change', e => { if (e.target.value) { applyState(example
 renderLibrary();
 applyState(loadState() || exampleState('completo'));
 requestAnimationFrame(t => { lastFrame = t; requestAnimationFrame(frame); });
-window.__banco = { get state(){ return state; }, simDevs, refresh: () => { elecDirty = true; dispDirty = true; }, btSend: t => { const d = btDev(); return d ? d.send(t) : false; }, get uno(){ return uno; }, io, lcdModels, servoAngles, compileAndRun, applyState, exampleState, get display(){ return display; }, setPressed, listLibraries, saveLibrary };
+window.__banco = { TYPES, get state(){ return state; }, simDevs, refresh: () => { elecDirty = true; dispDirty = true; }, btSend: t => { const d = btDev(); return d ? d.send(t) : false; }, get uno(){ return uno; }, io, lcdModels, servoAngles, compileAndRun, applyState, exampleState, get display(){ return display; }, setPressed, listLibraries, saveLibrary };
