@@ -8,6 +8,7 @@ import { setDiagnostics, lintGutter } from '@codemirror/lint';
 import { tags } from '@lezer/highlight';
 import { Board, PinState, FREQ } from './emulator.js';
 import { BOARDS } from './boards.js';
+import { Esp32Link, PAGE_SHIM } from './esp32link.js';
 import { HD44780, PCF8574Lcd, I2CBus } from './lcd.js';
 import { TYPES, LIBRARY, LED_COLORS, RES_VALUES, fmt, fmtOhm, icon, ldrOhms } from './components.js';
 import { SSD1306, oledImage } from './modules.js';
@@ -20,6 +21,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 
 /* ======================= Placa ======================= */
 const MAXP = 70; // pines del Mega; Uno y Nano usan los primeros
+let esp = null, espVer = -1, webShown = false, bootPressed = false, webPath = '/'; // ESP32: red y Bluetooth simulados
 let BRD = BOARDS.uno, BPIN = BRD.terms, NP = BRD.pins.length;
 const pinName = p => BRD.pinName(p);
 const pinTitle = id => BRD.title(id);
@@ -54,7 +56,7 @@ function rebuildCircuit(){
   const parent = new Map();
   const find = k => { let r = k; while (parent.get(r) !== r) r = parent.get(r); return r; };
   const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
-  const keys = Object.keys(BPIN).map(id => 'B:' + id);
+  const keys = [...new Set([...Object.keys(BPIN).map(id => 'B:' + id), ...(BRD.keys || []), ...BRD.supplies.map(s => 'B:' + s[0])])]; // incluye pines sin terminal (GPIO0 del ESP32)
   for (const c of state.comps) for (const t in TYPES[c.type].terms) keys.push(`C${c.id}:${t}`);
   for (const k of keys) parent.set(k, k);
   for (const net of BRD.nets) for (const k of net.slice(1)) union('B:' + net[0], 'B:' + k);
@@ -78,20 +80,21 @@ function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
     const Gm = Array.from({ length: n }, () => new Float64Array(n)), b = new Float64Array(n), gReal = new Float64Array(n);
     for (let i = 0; i < n; i++) Gm[i][i] += 1e-12;
     const G2 = (i, j, g) => { if (i >= 0) { Gm[i][i] += g; gReal[i] += g; } if (j >= 0) { Gm[j][j] += g; gReal[j] += g; } if (i >= 0 && j >= 0) { Gm[i][j] -= g; Gm[j][i] -= g; } };
-    const SRC = (i, V, R, real = true) => { if (i < 0) return; Gm[i][i] += 1 / R; b[i] += V / R; if (real) gReal[i] += 1 / R; };
+    const SRC = (i, V, R, real = true) => { if (!(i >= 0)) return; Gm[i][i] += 1 / R; b[i] += V / R; if (real) gReal[i] += 1 / R; };
     const pinV = [];
     for (let p = 0; p < NP; p++) {
       const s = io.pins[p], i = node('B:' + pinName(p));
       if (s.mode === 'OUTPUT') {
-        let V = s.val * 5;
-        if (s.duty != null && mode.pwm !== 'inst') V = mode.pwm === 'avg' ? s.duty * 5 : (mode.high && mode.high.has(p) ? 5 : 0);
+        const VIO = BRD.vio || 5; let V = s.val * VIO;
+        if (s.duty != null && mode.pwm !== 'inst') V = mode.pwm === 'avg' ? s.duty * VIO : (mode.high && mode.high.has(p) ? VIO : 0);
         pinV[p] = V; SRC(i, V, 25);
-      } else if (s.mode === 'INPUT_PULLUP') SRC(i, 5, 35000);
+      } else if (s.mode === 'INPUT_PULLUP') SRC(i, BRD.vio || 5, 35000);
       else SRC(i, 0, 1e8, false);
     }
     for (const [id, V, R] of BRD.supplies) SRC(node('B:' + id), V, R);
+    if (bootPressed && BRD.esp32) SRC(node('B:D0'), 0, 100); // botón BOOT del ESP32
     const diodes = [];
-    const driven = new Map(); for (let p = 0; p < NP; p++) if (pinV[p] !== undefined) { const i = node('B:' + pinName(p)); if (i >= 0 && !driven.has(i)) driven.set(i, pinV[p] / 5); else if (i === -1) driven.set(-1, 0); }
+    const driven = new Map(); for (let p = 0; p < NP; p++) if (pinV[p] !== undefined) { const i = node('B:' + pinName(p)); if (i >= 0 && !driven.has(i)) driven.set(i, pinV[p] / (BRD.vio || 5)); else if (i === -1) driven.set(-1, 0); }
     const prev = i => { usedPrev = true; return i < 0 || !prevV ? 0 : prevV[i] || 0; };
     const E = {
       src: (a, g, Vs, R) => { const gg = 1 / Math.max(0.01, R); G2(a, g, gg); if (a >= 0) b[a] += Vs * gg; if (g >= 0) b[g] -= Vs * gg; },
@@ -106,7 +109,7 @@ function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
     };
     for (const c of state.comps) TYPES[c.type].elec(c, t => node(`C${c.id}:${t}`), E);
     const V = gauss(Gm, b, n);
-    const v = i => i < 0 ? 0 : V[i];
+    const v = i => i >= 0 ? V[i] : 0;
     let changed = false; const dI = new Map();
     for (const d of diodes) {
       const on = diodeOn.get(d.id) || false, vd = v(d.a) - v(d.k);
@@ -247,7 +250,7 @@ function applyInputs(cyc){
   }
   // TX de un puerto serie por hardware activo (TXEN): el pin queda como salida en reposo alto
   BRD.uarts.forEach((u, i) => {
-    const us = uno.usarts[i]; if (!us) return;
+    const us = uno.usarts[i]; if (!us || !u) return;
     const on = !!(uno.cpu.data[us.config.UCSRB] & 0x08), pin = io.pins[u.tx];
     if (on && pin.mode !== 'OUTPUT') { pin.mode = 'OUTPUT'; pin.val = 1; pin.uart = true; elecDirty = true; dispDirty = true; }
     else if (!on && pin.uart) { pin.uart = false; pin.mode = 'INPUT'; pin.val = 0; elecDirty = true; dispDirty = true; }
@@ -260,7 +263,7 @@ function applyInputs(cyc){
     const key = 'B:' + pinName(p); const v = voltage(sol, key);
     if (io.pins[p].mode === 'OUTPUT') floatWarn.delete(p);
     else {
-      let hi = v > 2.5;
+      let hi = v > (BRD.vio || 5) / 2;
       if (isFloating(sol, key)) { hi = Math.random() < 0.5; if (circuit.wired.has(key)) floatWarn.add(p); }
       else floatWarn.delete(p);
       uno.setInput(p, hi);
@@ -283,7 +286,9 @@ function startSim(hex){
   track.forEach(t => { t.high = 0; t.edge = 0; t.toggles = 0; });
   mapDevices();
   uno.pinListeners.push(onPin);
-  const dec = new TextDecoder(); uno.onSerial = (b, n) => { if (!n) { serialBuf += dec.decode(new Uint8Array([b]), { stream: true }); txFlash = performance.now(); } for (const d of devices.sim) if (d.hwRx && d.hwRx() === n) d.rx(b); };
+  esp = BRD.esp32 ? new Esp32Link((bytes, n) => uno && uno.serialWrite(bytes, n)) : null; webShown = false; $('#webView').srcdoc = ''; updateWebPanel();
+  if (esp) esp.onServer = () => webGo('/');
+  const dec = new TextDecoder(); uno.onSerial = (b, n) => { if (esp && n) esp.onByte(n, b); if (!n) { serialBuf += dec.decode(new Uint8Array([b]), { stream: true }); txFlash = performance.now(); } for (const d of devices.sim) if (d.hwRx && d.hwRx() === n) d.rx(b); };
   uno.onSpi = b => { let r = 0xFF; for (const d of devices.sim) if (d.onSpi) { const v = d.onSpi(b); if (typeof v === 'number') r &= v; } return r; };
   for (const d of simDevs.values()) if (d.reset) d.reset();
   for (const c of state.comps) if (c._oled) c._oled.reset();
@@ -291,7 +296,7 @@ function startSim(hex){
   lastFrame = performance.now();
   setStatus('run');
 }
-function stopSim(){ running = false; uno = null; for (const d of simDevs.values()) if (d.reset) d.reset(); io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; p.uart = false; }); elecDirty = true; setStatus('stop'); stopTone(); }
+function stopSim(){ running = false; uno = null; esp = null; $('#webView').srcdoc = ''; updateWebPanel(); for (const d of simDevs.values()) if (d.reset) d.reset(); io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; p.uart = false; }); elecDirty = true; setStatus('stop'); stopTone(); }
 function setStatus(s, extra){
   const st = $('#status'), run = $('#run');
   st.className = 'chip' + (s === 'run' ? ' on' : s === 'error' ? ' bad' : s === 'busy' ? ' busy' : '');
@@ -329,6 +334,7 @@ function frame(now){
   }
   if (serialBuf) { serialAppend(serialBuf); serialBuf = ''; }
   updateBtPanel();
+  if (esp) { esp.check(performance.now()); if (esp.ver !== espVer) { espVer = esp.ver; updateWebPanel(); } }
   renderDynamic();
   requestAnimationFrame(frame);
 }
@@ -402,13 +408,14 @@ function renderDynamic(){
   for (let p = 0; p < NP; p++) if (pinI[p] !== undefined && Math.abs(pinI[p]) > 0.04) warns.push(`${pinName(p)}: el pin entrega ${fmt(Math.abs(pinI[p]) * 1000, 0)} mA y el máximo del ${BRD.chipName} es 40 mA. Revisa si hay un corto o falta una resistencia.`);
   if (D.sol && D.sol.i5V > 0.5) warns.push('Cortocircuito: 5V está unido directamente a GND.');
   if (D.sol && D.sol.i3V > 0.15) warns.push('Cortocircuito: 3,3 V está unido a GND o muy cargado.');
-  if (running) for (const p of floatWarn) warns.push(`${pinName(p)}: la entrada queda flotante (sin nada que la fije a 5V o a GND) y lee valores al azar. Usa INPUT_PULLUP o una resistencia pull-down.`);
-  for (const p of [0, 1]) if (running && circuit.wired.has('B:D' + p)) { warns.push(`D${p}: estos pines los usa el puerto serie (USB). Evita conectar cosas ahí si usas Serial.`); break; }
+  if (running) for (const p of floatWarn) warns.push(`${pinName(p)}: la entrada queda flotante (sin nada que la fije a ${BRD.vio === 3.3 ? '3,3 V' : '5V'} o a GND) y lee valores al azar. Usa INPUT_PULLUP o una resistencia pull-down.`);
+  for (const p of [BRD.uarts[0].rx, BRD.uarts[0].tx]) if (running && circuit.wired.has('B:D' + p)) { warns.push(`${BRD.label('D' + p)}: estos pines los usa el puerto serie (USB). Evita conectar cosas ahí si usas Serial.`); break; }
+  if (esp) { for (const w of esp.warn) warns.push(w); }
   const html = warns.map(w => `<div class="warn">${esc(w).replace(/^([^:]+:)/, '<b>$1</b>')}</div>`).join('');
   if (html !== lastWarnHTML) { $('#warnings').innerHTML = html; lastWarnHTML = html; }
   // LEDs y pines de la placa
-  const p13 = io.pins[13]; const lOn = running && p13.mode === 'OUTPUT' ? (p13.duty != null ? p13.duty : p13.val) : 0;
-  $('#bL').setAttribute('fill', lOn > 0.02 ? `rgba(255,190,40,${0.35 + 0.65 * lOn})` : '#4a3d1a');
+  const p13 = io.pins[BRD.ledPin ?? 13]; const lOn = running && p13.mode === 'OUTPUT' ? (p13.duty != null ? p13.duty : p13.val) : 0;
+  $('#bL').setAttribute('fill', BRD.esp32 ? (lOn > 0.02 ? `rgba(60,140,255,${0.35 + 0.65 * lOn})` : '#1a2a4a') : lOn > 0.02 ? `rgba(255,190,40,${0.35 + 0.65 * lOn})` : '#4a3d1a');
   $('#bTX').setAttribute('fill', now - txFlash < 60 ? '#ffbe28' : '#4a3d1a');
   $('#bRX').setAttribute('fill', now - rxFlash < 120 ? '#ffbe28' : '#4a3d1a');
   for (let p = 0; p < NP; p++) {
@@ -634,6 +641,7 @@ svg.addEventListener('pointerdown', e => {
   if (drawing) { drawing.pts.push([snap(pt.x), snap(pt.y)]); renderWires(); return; }
   if (ctrl) {
     if (ctrl.dataset.ctrl === 'reset') { if (hexLoaded) startSim(); return; }
+    if (ctrl.dataset.ctrl === 'boot') { bootPressed = true; elecDirty = true; dispDirty = true; drag = { kind: 'boot' }; svg.setPointerCapture(e.pointerId); e.preventDefault(); return; }
     const c = compById(+ctrl.dataset.id);
     if (ctrl.dataset.ctrl === 'tap') { const d = simDevs.get(c.id); if (d && d.tap) d.tap(ctrl.dataset); dispDirty = true; }
     else if (ctrl.dataset.ctrl === 'card') { c.props.near = !c.props.near; renderComps(); elecDirty = true; dispDirty = true; scheduleSave(); updateProps(true); }
@@ -667,7 +675,7 @@ svg.addEventListener('pointermove', e => {
     c.props.x = clamp(x, -1, 1); c.props.y = clamp(y, -1, 1); elecDirty = true; dispDirty = true;
   } else if (drag.kind === 'pot') { drag.c.props.pos = clamp(drag.pos + ((drag.y - pt.y) + (pt.x - drag.x)) / 160, 0, 1); elecDirty = true; dispDirty = true; const r = $('#pPos'); if (r) r.value = Math.round(drag.c.props.pos * 1000); }
 });
-const endDrag = () => { if (!drag) return; if (drag.kind === 'btn' && !drag.c.props.latch) setPressed(drag.c, false);
+const endDrag = () => { if (!drag) return; if (drag.kind === 'boot') { bootPressed = false; elecDirty = true; dispDirty = true; drag = null; return; } if (drag.kind === 'btn' && !drag.c.props.latch) setPressed(drag.c, false);
   if (drag.kind === 'key') pressKey(drag.c, -1);
   if (drag.kind === 'joy') { drag.c.props.x = 0; drag.c.props.y = 0; elecDirty = true; dispDirty = true; } // el resorte lo centra
   if (drag.kind === 'joybtn') { drag.c.props.pressed = false; elecDirty = true; dispDirty = true; } if (drag.kind !== 'btn') scheduleSave(); drag = null; };
@@ -834,8 +842,54 @@ $('#serialForm').addEventListener('submit', e => {
   $('#serialIn').value = '';
 });
 
+/* ======================= Navegador (WiFi simulado del ESP32) ======================= */
+function updateWebPanel(){
+  const show = !!(esp && (esp.wifi || esp.ap || esp.port));
+  if ($('#webPanel').hidden === show) $('#webPanel').hidden = !show;
+  if (!esp) return;
+  const w = esp.wifi, st = [];
+  if (w) st.push(w.connected ? `conectado a «${w.ssid}» · IP 192.168.1.50` : `conectando a «${w.ssid}»…`);
+  if (esp.ap) st.push(`punto de acceso «${esp.ap}» · 192.168.4.1`);
+  if (esp.port) st.push(`servidor en el puerto ${esp.port}`);
+  for (const e of esp.events.splice(0)) serialAppend(`\n[${e}]\n`);
+  $('#wifiState').textContent = st.join(' · ');
+}
+function webShow(html){ $('#webView').srcdoc = PAGE_SHIM + html; }
+function webResolve(href){ try { const u = new URL(href || '/', 'http://h' + webPath); return u.pathname + u.search; } catch { return '/'; } }
+function webGo(href, method = 'GET', body = ''){
+  if (!esp || !running) { webShow('<p style="font:14px sans-serif;color:#666">Inicia la simulación para ver las páginas del ESP32.</p>'); return; }
+  const path = webResolve(href); $('#webUrl').value = `http://${esp.host()}${path}`;
+  esp.request(method, path, body, r => {
+    if (r.timeout) { webShow(`<p style="font:14px sans-serif;color:#a33">El ESP32 no respondió a <b>${esc(path)}</b>.<br>¿Llamas a <code>server.handleClient()</code> en <code>loop()</code> y no hay un <code>delay()</code> largo?</p>`); return; }
+    if (r.status >= 300 && r.status < 400 && r.headers.location) { webGo(r.headers.location); return; }
+    webPath = path.split('?')[0];
+    if (/^image\//.test(r.type)) webShow(`<body style="margin:0;background:#111;display:grid;place-items:center;height:100vh"><img src="${cameraFrame()}" style="max-width:100%"></body>`);
+    else if (/html/.test(r.type)) webShow(r.body);
+    else webShow(`<pre style="font:13px ui-monospace,monospace;white-space:pre-wrap;margin:8px">${esc(r.body)}</pre>`);
+  });
+}
+function cameraFrame(){ // imagen de prueba de la cámara simulada (ESP32-CAM)
+  const cv = document.createElement('canvas'); cv.width = 320; cv.height = 240; const g = cv.getContext('2d');
+  ['#fff', '#ff0', '#0ff', '#0f0', '#f0f', '#f00', '#00f', '#000'].forEach((c, i) => { g.fillStyle = c; g.fillRect(i * 40, 0, 40, 180); });
+  g.fillStyle = '#222'; g.fillRect(0, 180, 320, 60); g.fillStyle = '#fff'; g.font = '16px monospace';
+  g.fillText('Cámara simulada  ' + new Date().toLocaleTimeString(), 12, 215); return cv.toDataURL('image/jpeg', 0.8);
+}
+window.addEventListener('message', e => {
+  const d = e.data; if (!d || e.source !== $('#webView').contentWindow) return;
+  if (d.banco === 'nav') webGo(d.href, d.method, d.body);
+  if (d.banco === 'fetch') {
+    const reply = m => $('#webView').contentWindow.postMessage({ banco: 'resp', id: d.id, ...m }, '*');
+    if (!esp || !running) { reply({ error: 'sin conexión' }); return; }
+    esp.request(d.method, webResolve(d.href), d.body, r => r.timeout ? reply({ error: 'tiempo agotado' }) : reply({ status: r.status, headers: r.headers, body: r.body }));
+  }
+});
+$('#webForm').addEventListener('submit', e => { e.preventDefault(); const v = $('#webUrl').value.replace(/^https?:\/\/[^/]*/, '') || '/'; webGo(v); });
+
 /* ======================= Celular (Bluetooth HC-05) ======================= */
-function btDev(){ const c = state.comps.find(c => c.type === 'hc05'); return c ? simDevs.get(c.id) : null; }
+// ESP32: BluetoothSerial usa el mismo panel que el HC-05
+const espBt = { c: { name: 'ESP32', props: { baud: 'Bluetooth' } }, get rxText(){ return esp ? esp.btText : ''; }, set rxText(v){ if (esp) esp.btText = v; },
+  send(t){ if (!esp || !esp.bt || !uno || !running) return false; uno.serialWrite([...new TextEncoder().encode(t)], 1); rxFlash = performance.now(); return true; } };
+function btDev(){ if (esp && esp.bt) { espBt.c.name = `ESP32 «${esp.bt}»`; return espBt; } const c = state.comps.find(c => c.type === 'hc05'); return c ? simDevs.get(c.id) : null; }
 function updateBtPanel(){
   const d = btDev(); const panel = $('#btPanel');
   if (panel.hidden === !!d) { panel.hidden = !d; if (d) $('#btName').textContent = `${d.c.name} · ${d.c.props.baud} baudios`; }

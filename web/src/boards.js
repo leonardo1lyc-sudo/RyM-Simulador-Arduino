@@ -1,4 +1,5 @@
 // Placas Arduino: pines (número Arduino -> puerto/bit del microcontrolador), terminales en el lienzo y dibujo.
+import { ESP32_GPIO, ESP32_ADC } from './esp32map.js';
 const PITCH = 17.6; // 2,54 mm en unidades del lienzo
 
 /* ---------- utilidades de dibujo ---------- */
@@ -191,4 +192,62 @@ const mega = makeBoard({
   };
 })(mega);
 
-export const BOARDS = { uno, nano, mega };
+/* =========================================================================
+   ESP32 DevKit V1 (30 pines) en modo compatible: corre sobre el ATmega2560 emulado
+   ========================================================================= */
+const esp32Pins = []; for (let g = 0; g < 40; g++) { const m = ESP32_GPIO[g]; esp32Pins.push(m ? [m[0], m[1]] : null); }
+const ESP_LABEL = { 1: 'TX0', 3: 'RX0', 16: 'RX2', 17: 'TX2', 36: 'VP', 39: 'VN' };
+const esp32 = makeBoard({
+  id: 'esp32', name: 'ESP32 DevKit', chipName: 'ESP32', mcu: 'atmega2560', canvasW: 1100, vio: 3.3, ledPin: 2, esp32: true,
+  rect: { x: 300, y: 130, w: 220, h: 410 },
+  pins: esp32Pins, firstAnalog: 99, analog: { ...ESP32_ADC },
+  pwm: new Set(), pinExtra: {},
+  notes: notesFrom([[1, 'TX0 del puerto serie (USB)'], [3, 'RX0 del puerto serie (USB)'], [16, 'RX2 (Serial2)'], [17, 'TX2 (Serial2)'], [21, 'SDA (I2C)'], [22, 'SCL (I2C)'],
+    [23, 'MOSI (SPI)'], [19, 'MISO (SPI)'], [18, 'SCK (SPI)'], [5, 'SS (SPI)'], [2, 'LED azul de la placa'], [0, 'botón BOOT (a GND al pulsar)'],
+    [34, 'solo entrada'], [35, 'solo entrada'], [36, 'solo entrada'], [39, 'solo entrada'], [25, 'DAC1'], [26, 'DAC2'],
+    ...Object.entries(ESP32_ADC).map(([g, c]) => [+g, (+g >= 32 ? 'ADC1' : 'ADC2') + ' (analogRead, 0–4095)']),
+    ...[[4, 0], [0, 1], [2, 2], [15, 3], [13, 4], [12, 5], [14, 6], [27, 7], [33, 8], [32, 9]].map(([g, t]) => [g, 'táctil T' + t])]),
+  i2c: { sda: 'D21', scl: 'D22' }, spi: { mosi: 23, sck: 18 }, uarts: [{ rx: 3, tx: 1 }, null, { rx: 16, tx: 17 }, null],
+  nets: [['GND.1', 'GND.2']], supplies: [['3V3', 3.3, 0.3], ['VIN', 5, 0.05], ['EN', 3.3, 10000], ['D0', 3.3, 10000]],
+});
+(function(B){
+  const { x, y, w, h } = B.rect, y0 = y + 120;
+  const L = ['EN', 'D36', 'D39', 'D34', 'D35', 'D32', 'D33', 'D25', 'D26', 'D27', 'D14', 'D12', 'D13', 'GND.1', 'VIN'];
+  const R = ['D23', 'D22', 'D1', 'D3', 'D21', 'D19', 'D18', 'D5', 'D17', 'D16', 'D4', 'D2', 'D15', 'GND.2', '3V3'];
+  L.forEach((id, i) => B.add(id, x + 16, y0 + i * PITCH, -1, 0));
+  R.forEach((id, i) => { B.add(id, x + w - 16, y0 + i * PITCH, 1, 0); B.terms[id].labelLeft = true; });
+  B.pinName = p => 'D' + p;
+  B.pinOfName = id => { const m = /^D(\d+)$/.exec(id); return m && esp32Pins[+m[1]] ? +m[1] : -1; };
+  B.label = id => { const base = id.replace(/\.\d+$/, ''); const m = /^D(\d+)$/.exec(base); return m ? (ESP_LABEL[+m[1]] || 'D' + m[1]) : base; };
+  B.title = id => {
+    const base = id.replace(/\.\d+$/, '');
+    if (base === 'GND') return 'GND (tierra, 0 V)'; if (base === '3V3') return '3,3 V (salida del regulador)'; if (base === 'VIN') return 'VIN (5 V del USB)'; if (base === 'EN') return 'EN (reinicio, activo en LOW; no simulado)';
+    const p = B.pinOfName(base); if (p < 0) return base;
+    return `GPIO${p}${B.notes[p] ? ' · ' + B.notes[p] : ''}`;
+  };
+  B.keys = esp32Pins.map((m, p) => m ? 'B:D' + p : null).filter(Boolean);
+  B.draw = () => {
+    let s = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="#1b1d20" stroke="#000" stroke-width="2"/>`;
+    for (const [hx, hy] of [[x + 12, y + 12], [x + w - 12, y + 12], [x + 12, y + h - 12], [x + w - 12, y + h - 12]]) s += `<circle cx="${hx}" cy="${hy}" r="5" fill="var(--bg)" stroke="#d9c27a" stroke-width="1.5"/>`;
+    // módulo ESP-WROOM-32: antena y blindaje metálico
+    const mx = x + 40, mw = w - 80;
+    s += `<rect x="${mx}" y="${y + 8}" width="${mw}" height="168" rx="2" fill="#262a2e"/>`;
+    s += `<path d="M${mx + 10} ${y + 40} v-22 h16 v18 h16 v-18 h16 v18 h16 v-18 h16 v18 h16 v-18 h${mw - 106}" fill="none" stroke="#c9a54a" stroke-width="2.5"/>`;
+    s += `<rect x="${mx + 6}" y="${y + 50}" width="${mw - 12}" height="118" rx="3" fill="#b8bec3" stroke="#8b9297"/>`;
+    s += `<text x="${x + w / 2}" y="${y + 98}" font-family="var(--f-ui)" font-weight="700" font-size="13" fill="#4a5056" text-anchor="middle">ESP32</text><text x="${x + w / 2}" y="${y + 116}" font-family="var(--f-code)" font-size="8.5" fill="#5b6268" text-anchor="middle">ESP-WROOM-32</text><text x="${x + w / 2}" y="${y + 150}" font-family="var(--f-code)" font-size="7" fill="#6b7277" text-anchor="middle">modo compatible</text>`;
+    s += `<rect x="${x + 6}" y="${y0 - 10}" width="20" height="${(L.length - 1) * PITCH + 20}" rx="2" fill="var(--header)"/><rect x="${x + w - 26}" y="${y0 - 10}" width="20" height="${(R.length - 1) * PITCH + 20}" rx="2" fill="var(--header)"/>`;
+    for (const id of [...L, ...R]) s += `<rect data-pinled="${id}" x="${B.terms[id].x - 3.5}" y="${B.terms[id].y - 3.5}" width="7" height="7" fill="#0c0c0c" stroke="#3a3a3a"/>`;
+    s += pinLabels(B);
+    // regulador, botones, LEDs y USB
+    s += `<rect x="${x + w / 2 - 14}" y="${y + 190}" width="28" height="18" rx="1" fill="#2b2f33"/><rect x="${x + w / 2 - 24}" y="${y + 240}" width="48" height="30" rx="2" fill="#16181a"/><text x="${x + w / 2}" y="${y + 258}" font-family="var(--f-code)" font-size="6.5" fill="#8e969b" text-anchor="middle">CP2102</text>`;
+    s += `<g class="ctrl" data-ctrl="reset"><rect x="${x + 34}" y="${y + h - 52}" width="22" height="18" rx="2" fill="#c9cfd2"/><rect x="${x + 39}" y="${y + h - 48}" width="12" height="10" rx="2" fill="#3a3f44"/><title>EN: reiniciar el ESP32</title></g><text class="silk" x="${x + 45}" y="${y + h - 57}" font-size="8" text-anchor="middle">EN</text>`;
+    s += `<g class="ctrl" data-ctrl="boot"><rect x="${x + w - 56}" y="${y + h - 52}" width="22" height="18" rx="2" fill="#c9cfd2"/><rect x="${x + w - 51}" y="${y + h - 48}" width="12" height="10" rx="2" fill="#3a3f44"/><title>BOOT: une GPIO0 a GND mientras lo mantienes pulsado</title></g><text class="silk" x="${x + w - 45}" y="${y + h - 57}" font-size="8" text-anchor="middle">BOOT</text>`;
+    s += boardLed('bON', x + 72, y + h - 92, 'PWR') + `<rect x="${x + 72}" y="${y + h - 92}" width="10" height="6" rx="1" fill="#ff3b30" filter="url(#glowS)" opacity=".9"/>`;
+    s += `<rect id="bL" x="${x + w - 82}" y="${y + h - 92}" width="10" height="6" rx="1" fill="#1a2a4a"/><text class="silk" x="${x + w - 86}" y="${y + h - 86}" font-size="8" text-anchor="end">IO2</text>`;
+    s += `<rect id="bTX" width="0" height="0"/><rect id="bRX" width="0" height="0"/>`;
+    s += `<rect x="${x + w / 2 - 22}" y="${y + h - 26}" width="44" height="32" rx="3" fill="#b9c0c4" stroke="#7d868b"/><rect x="${x + w / 2 - 14}" y="${y + h - 4}" width="28" height="8" rx="1" fill="#8d969b"/>`;
+    return s;
+  };
+})(esp32);
+
+export const BOARDS = { uno, nano, mega, esp32 };

@@ -115,6 +115,11 @@ button{cursor:pointer}
 .liblist.builtin li{padding:6px 10px}
 .serial{display:flex;flex-direction:column;height:220px;border-top:1px solid var(--line)}
 .serial.bt{height:170px}
+.serial.web{height:300px}
+.serial.web .serialbar b::before{content:'🌐 '}
+#webForm{display:flex;gap:8px;padding:6px 12px;border-bottom:1px solid var(--line)}
+#webUrl{flex:1;font:12.5px var(--f-code);padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+#webView{flex:1;width:100%;border:0;background:#fff}
 .serial.bt .serialbar b::before{content:'📱 '}
 .props output{float:right;color:var(--ink);font-family:var(--f-code);font-size:11.5px}
 .serialbar{display:flex;align-items:center;gap:8px;padding:6px 12px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}

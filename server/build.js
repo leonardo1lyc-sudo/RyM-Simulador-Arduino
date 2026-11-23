@@ -13,6 +13,7 @@ const run = promisify(execFile);
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 export const VENDOR = process.env.BANCO_VENDOR || path.join(ROOT, 'vendor');
 const CORE = path.join(VENDOR, 'ArduinoCore-avr');
+const ESP32 = path.join(ROOT, 'server', 'esp32');
 const CACHE = process.env.BANCO_CACHE || path.join(os.tmpdir(), 'banco-uno-cache');
 const SEED = process.env.BANCO_CACHE_SEED || ''; // caché de sólo lectura generada al construir (Vercel)
 const TOOL = n => (process.env.AVR_BIN ? path.join(process.env.AVR_BIN, n) : n);
@@ -25,9 +26,14 @@ export const BOARDS = {
   uno: { name: 'Arduino Uno', mcu: 'atmega328p', define: 'ARDUINO_AVR_UNO', variant: 'standard', flashMax: 32256, ramMax: 2048 },
   nano: { name: 'Arduino Nano', mcu: 'atmega328p', define: 'ARDUINO_AVR_NANO', variant: 'eightanaloginputs', flashMax: 30720, ramMax: 2048 },
   mega: { name: 'Arduino Mega 2560', mcu: 'atmega2560', define: 'ARDUINO_AVR_MEGA2560', variant: 'mega', flashMax: 253952, ramMax: 8192 },
+  // Modo compatible: el programa de ESP32 corre en un ATmega2560 emulado con los pines numerados como GPIO
+  // y librerías propias (WiFi y WebServer simulados, BluetoothSerial, Preferences, LEDC...).
+  esp32: { name: 'ESP32 DevKit', mcu: 'atmega2560', define: 'ARDUINO_ESP32_DEV', esp32: true, flashMax: 253952, ramMax: 8192,
+    coreRoot: path.join(VENDOR, 'esp32-core'), variantDir: path.join(ESP32, 'variant') },
 };
+const COMPAT_H = path.join(ESP32, 'libraries', 'ESP32Compat', 'src', 'esp32compat.h');
 const flagsFor = b => {
-  const MCU = ['-mmcu=' + b.mcu, '-DF_CPU=16000000L', '-DARDUINO=10819', '-D' + b.define, '-DARDUINO_ARCH_AVR'];
+  const MCU = ['-mmcu=' + b.mcu, '-DF_CPU=16000000L', '-DARDUINO=10819', '-D' + b.define, '-DARDUINO_ARCH_AVR', ...(b.esp32 ? ['-DBANCO_ESP32', '-DSERIAL_RX_BUFFER_SIZE=256'] : [])];
   return {
     c: ['-c', '-g', '-Os', '-w', '-std=gnu11', '-ffunction-sections', '-fdata-sections', '-MMD', ...MCU],
     cxx: ['-c', '-g', '-Os', '-w', '-std=gnu++11', '-fpermissive', '-fno-exceptions', '-ffunction-sections', '-fdata-sections', '-fno-threadsafe-statics', '-Wno-error=narrowing', ...MCU],
@@ -54,7 +60,8 @@ async function walk(dir, recursive){
 async function compileObj(src, includes, label, ctx, board = BOARDS.uno){
   const ext = path.extname(src);
   const F = flagsFor(board);
-  const flags = ext === '.c' ? F.c : ext === '.S' ? F.s : F.cxx;
+  let flags = ext === '.c' ? F.c : ext === '.S' ? F.s : F.cxx;
+  if (board.esp32 && label !== 'core' && flags === F.cxx) flags = [...flags, '-include', COMPAT_H];
   const tool = ext === '.c' || ext === '.S' ? TOOL('avr-gcc') : TOOL('avr-g++');
   const inc = includes.map(i => '-I' + i);
   // Clave: contenido del fichero + flags + includes (los headers incluidos se cubren con el hash del conjunto de includes)
@@ -79,8 +86,8 @@ export function buildCore(boardId = 'uno'){
   const board = BOARDS[boardId] || BOARDS.uno;
   let corePromise = corePromises.get(board);
   if (!corePromise) corePromise = (async () => {
-    const coreDir = path.join(CORE, 'cores', 'arduino');
-    const variant = path.join(CORE, 'variants', board.variant);
+    const coreDir = path.join(board.coreRoot || CORE, 'cores', 'arduino');
+    const variant = board.variantDir || path.join(CORE, 'variants', board.variant);
     const files = (await walk(coreDir, false)).filter(f => SRC_EXT.has(path.extname(f)));
     const objs = [];
     for (const f of files) objs.push(await compileObj(f, [coreDir, variant], 'core', null, board));
@@ -100,9 +107,11 @@ export function buildCore(boardId = 'uno'){
 
 /* ---------- librerías ---------- */
 // Librerías incluidas en el servidor: las del núcleo AVR y las oficiales que estén en vendor/.
-export async function builtinLibraries(){
+export async function builtinLibraries(board = BOARDS.uno){
   const dirs = [];
-  for (const base of [path.join(CORE, 'libraries'), path.join(VENDOR, 'libraries')]) {
+  const bases = [path.join(CORE, 'libraries'), path.join(VENDOR, 'libraries')];
+  if (board.esp32) bases.unshift(path.join(ESP32, 'libraries'), path.join(board.coreRoot, 'libraries'));
+  for (const base of bases) {
     let ents = []; try { ents = await fs.readdir(base, { withFileTypes: true }); } catch {}
     for (const e of ents) if (e.isDirectory()) dirs.push(path.join(base, e.name));
   }
@@ -264,7 +273,7 @@ export async function compileSketch({ sketch, files = {}, libraries = [], board:
       dirMap.push([dir, `${name}/`]);
       userLibs.push(await describeLibrary(dir, 'user'));
     }
-    const allLibs = [...userLibs, ...await builtinLibraries()]; // las del usuario tienen prioridad
+    const allLibs = [...userLibs, ...await builtinLibraries(board)]; // las del usuario tienen prioridad
     const byHeader = new Map();
     for (const l of allLibs) for (const h of l.headers) if (!byHeader.has(h)) byHeader.set(h, l);
 
@@ -272,6 +281,7 @@ export async function compileSketch({ sketch, files = {}, libraries = [], board:
     const sketchFiles = [path.join(sketchDir, 'sketch.ino.cpp'), ...(await walk(sketchDir, false)).filter(f => !f.endsWith('sketch.ino.cpp'))];
     const used = []; const usedSet = new Set(); const scanned = new Set();
     const queue = [...sketchFiles];
+    if (board.esp32) { const compat = allLibs.find(l => l.name === 'ESP32Compat'); usedSet.add(compat); used.push(compat); queue.push(...await librarySources(compat)); }
     const localHeaders = new Set((await walk(sketchDir, false)).map(f => path.basename(f)));
     const coreHeaders = new Set((await walk(core.includes[0], false)).map(f => path.basename(f)));
     const missing = [];
@@ -306,7 +316,7 @@ export async function compileSketch({ sketch, files = {}, libraries = [], board:
     // enlace
     const elf = path.join(work, 'sketch.elf');
     try {
-      await run(TOOL('avr-gcc'), ['-w', '-Os', '-g', '-Wl,--gc-sections', '-mmcu=' + board.mcu, '-o', elf, ...objs, core.lib, '-L' + work, '-lm'], { timeout: 60000, maxBuffer: 4 << 20 });
+      await run(TOOL('avr-gcc'), ['-w', '-Os', '-g', '-Wl,--gc-sections', '-mmcu=' + board.mcu, '-o', elf, ...objs, core.lib, '-L' + work, ...(board.esp32 ? ['-Wl,-u,vfprintf', '-lprintf_flt'] : []), '-lm'], { timeout: 60000, maxBuffer: 4 << 20 });
     } catch (e) {
       const { diags, log: clean } = parseDiagnostics(e.stderr || e.message, dirMap);
       return { ok: false, diagnostics: diags.length ? diags : [{ file: '', line: 0, col: 0, type: 'error', message: clean.trim().slice(0, 500), es: null }], log: clean };

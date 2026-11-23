@@ -1207,4 +1207,134 @@ void loop() {
 }
 `,
   },
+  esp32web: {
+    title: 'ESP32: servidor web que prende un LED',
+    board: 'esp32',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'led', x: 720, y: 250, rot: 0, name: 'LED1', props: { color: 'verde' } },
+          { id: 2, type: 'res', x: 640, y: 210, rot: 0, name: 'R1', props: { ohms: 220 } },
+          { id: 3, type: 'pot', x: 140, y: 330, rot: 0, name: 'POT1', props: { ohms: 10000, pos: 0.5 } },
+        ],
+        wires: [
+          { id: 10, a: 'B:D26', b: 'C2:a', pts: [], color: SIG[0] },
+          { id: 11, a: 'C2:b', b: 'C1:a', pts: [], color: SIG[0] },
+          { id: 12, a: 'C1:k', b: 'B:GND.2', pts: [], color: GND },
+          { id: 13, a: 'C3:w', b: 'B:D34', pts: [], color: SIG[1] },
+          { id: 14, a: 'C3:p3', b: 'B:GND.1', pts: [], color: GND },
+          { id: 15, a: 'C3:p1', b: 'B:3V3', pts: [], color: RED },
+        ],
+        counters: { led: 1, res: 1, pot: 1 },
+      };
+    },
+    code: `// ESP32: página web para prender y apagar un LED y ver un potenciómetro.
+// La página aparece en el panel «Navegador» (el WiFi es simulado).
+#include <WiFi.h>
+#include <WebServer.h>
+
+const char* RED = "MiCasa";
+const char* CLAVE = "12345678";
+const int LED = 26;
+const int POT = 34;
+
+WebServer server(80);
+bool encendido = false;
+
+void pagina() {
+  String html = "<!doctype html><html><head><meta name='viewport' content='width=device-width'>"
+    "<style>body{font-family:sans-serif;text-align:center;padding:16px}"
+    "a{display:inline-block;padding:12px 22px;margin:6px;border-radius:8px;color:#fff;text-decoration:none}"
+    ".on{background:#2e7d32}.off{background:#c62828}</style></head><body>"
+    "<h2>ESP32 &middot; Servidor web</h2>";
+  html += "<p>LED: <b>" + String(encendido ? "ENCENDIDO" : "APAGADO") + "</b></p>";
+  html += "<a class='on' href='/on'>Encender</a><a class='off' href='/off'>Apagar</a>";
+  html += "<p>Potenciómetro: <b id='pot'>" + String(analogRead(POT)) + "</b> / 4095</p>";
+  html += "<script>setInterval(function(){fetch('/pot').then(r=>r.text()).then(t=>document.getElementById('pot').textContent=t)},1000)</script>";
+  html += "</body></html>";
+  server.send(200, "text/html", html);
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(LED, OUTPUT);
+  WiFi.begin(RED, CLAVE);
+  Serial.print("Conectando a ");
+  Serial.print(RED);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(250);
+    Serial.print(".");
+  }
+  Serial.println();
+  Serial.print("Conectado. IP: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", pagina);
+  server.on("/on", []() { encendido = true; digitalWrite(LED, HIGH); pagina(); });
+  server.on("/off", []() { encendido = false; digitalWrite(LED, LOW); pagina(); });
+  server.on("/pot", []() { server.send(200, "text/plain", String(analogRead(POT))); });
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+}
+`,
+  },
+  esp32pwm: {
+    title: 'ESP32: brillo con LEDC y botón BOOT',
+    board: 'esp32',
+    build(){ return { comps: [], wires: [], counters: {} }; },
+    code: `// ESP32: el LED azul de la placa (GPIO2) se enciende y apaga suave con LEDC.
+// Mantén pulsado el botón BOOT de la placa (GPIO0) para que parpadee rápido.
+const int LED = 2;
+const int BOOT = 0;
+volatile int pulsaciones = 0;
+
+void IRAM_ATTR alPulsar() { pulsaciones++; }
+
+void setup() {
+  Serial.begin(115200);
+  ledcAttach(LED, 5000, 8);          // pin, frecuencia, resolución (API 3.x)
+  pinMode(BOOT, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(BOOT), alPulsar, FALLING);
+  Serial.printf("Chip %s a %u MHz\\n", ESP.getChipModel(), ESP.getCpuFreqMHz());
+}
+
+void loop() {
+  bool rapido = digitalRead(BOOT) == LOW;
+  for (int b = 0; b <= 255; b += 5) { ledcWrite(LED, b); delay(rapido ? 2 : 10); }
+  for (int b = 255; b >= 0; b -= 5) { ledcWrite(LED, b); delay(rapido ? 2 : 10); }
+  Serial.printf("Pulsaciones de BOOT: %d\\n", pulsaciones);
+}
+`,
+  },
+  esp32bt: {
+    title: 'ESP32: Bluetooth con el celular',
+    board: 'esp32',
+    build(){ return { comps: [], wires: [], counters: {} }; },
+    code: `// ESP32: escribe "1" o "0" desde el panel Celular para prender o apagar el LED azul (GPIO2).
+#include <BluetoothSerial.h>
+
+BluetoothSerial SerialBT;
+const int LED = 2;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(LED, OUTPUT);
+  SerialBT.begin("ESP32-Banco");
+  Serial.println("Bluetooth listo. Empareja el celular con ESP32-Banco");
+}
+
+void loop() {
+  if (SerialBT.available()) {
+    char c = SerialBT.read();
+    if (c == '1') { digitalWrite(LED, HIGH); SerialBT.println("LED encendido"); }
+    if (c == '0') { digitalWrite(LED, LOW); SerialBT.println("LED apagado"); }
+    Serial.print("Recibido: ");
+    Serial.println(c);
+  }
+}
+`,
+  },
 };
