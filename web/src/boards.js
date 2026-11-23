@@ -208,7 +208,7 @@ const esp32 = makeBoard({
     ...Object.entries(ESP32_ADC).map(([g, c]) => [+g, (+g >= 32 ? 'ADC1' : 'ADC2') + ' (analogRead, 0–4095)']),
     ...[[4, 0], [0, 1], [2, 2], [15, 3], [13, 4], [12, 5], [14, 6], [27, 7], [33, 8], [32, 9]].map(([g, t]) => [g, 'táctil T' + t])]),
   i2c: { sda: 'D21', scl: 'D22' }, spi: { mosi: 23, sck: 18 }, uarts: [{ rx: 3, tx: 1 }, null, { rx: 16, tx: 17 }, null],
-  nets: [['GND.1', 'GND.2']], supplies: [['3V3', 3.3, 0.3], ['VIN', 5, 0.05], ['EN', 3.3, 10000], ['D0', 3.3, 10000]],
+  nets: [['GND.1', 'GND.2']], supplies: [['3V3', 3.3, 0.5], ['VIN', 5, 0.05], ['EN', 3.3, 10000], ['D0', 3.3, 10000]],
 });
 (function(B){
   const { x, y, w, h } = B.rect, y0 = y + 120;
@@ -240,8 +240,8 @@ const esp32 = makeBoard({
     s += pinLabels(B);
     // regulador, botones, LEDs y USB
     s += `<rect x="${x + w / 2 - 14}" y="${y + 190}" width="28" height="18" rx="1" fill="#2b2f33"/><rect x="${x + w / 2 - 24}" y="${y + 240}" width="48" height="30" rx="2" fill="#16181a"/><text x="${x + w / 2}" y="${y + 258}" font-family="var(--f-code)" font-size="6.5" fill="#8e969b" text-anchor="middle">CP2102</text>`;
-    s += `<g class="ctrl" data-ctrl="reset"><rect x="${x + 34}" y="${y + h - 52}" width="22" height="18" rx="2" fill="#c9cfd2"/><rect x="${x + 39}" y="${y + h - 48}" width="12" height="10" rx="2" fill="#3a3f44"/><title>EN: reiniciar el ESP32</title></g><text class="silk" x="${x + 45}" y="${y + h - 57}" font-size="8" text-anchor="middle">EN</text>`;
-    s += `<g class="ctrl" data-ctrl="boot"><rect x="${x + w - 56}" y="${y + h - 52}" width="22" height="18" rx="2" fill="#c9cfd2"/><rect x="${x + w - 51}" y="${y + h - 48}" width="12" height="10" rx="2" fill="#3a3f44"/><title>BOOT: une GPIO0 a GND mientras lo mantienes pulsado</title></g><text class="silk" x="${x + w - 45}" y="${y + h - 57}" font-size="8" text-anchor="middle">BOOT</text>`;
+    s += `<g class="ctrl" data-ctrl="reset"><rect x="${x + 64}" y="${y + h - 52}" width="22" height="18" rx="2" fill="#c9cfd2"/><rect x="${x + 69}" y="${y + h - 48}" width="12" height="10" rx="2" fill="#3a3f44"/><title>EN: reiniciar el ESP32</title></g><text class="silk" x="${x + 75}" y="${y + h - 57}" font-size="8" text-anchor="middle">EN</text>`;
+    s += `<g class="ctrl" data-ctrl="boot"><rect x="${x + w - 86}" y="${y + h - 52}" width="22" height="18" rx="2" fill="#c9cfd2"/><rect x="${x + w - 81}" y="${y + h - 48}" width="12" height="10" rx="2" fill="#3a3f44"/><title>BOOT: une GPIO0 a GND mientras lo mantienes pulsado</title></g><text class="silk" x="${x + w - 75}" y="${y + h - 57}" font-size="8" text-anchor="middle">BOOT</text>`;
     s += boardLed('bON', x + 72, y + h - 92, 'PWR') + `<rect x="${x + 72}" y="${y + h - 92}" width="10" height="6" rx="1" fill="#ff3b30" filter="url(#glowS)" opacity=".9"/>`;
     s += `<rect id="bL" x="${x + w - 82}" y="${y + h - 92}" width="10" height="6" rx="1" fill="#1a2a4a"/><text class="silk" x="${x + w - 86}" y="${y + h - 86}" font-size="8" text-anchor="end">IO2</text>`;
     s += `<rect id="bTX" width="0" height="0"/><rect id="bRX" width="0" height="0"/>`;

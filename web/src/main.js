@@ -118,7 +118,7 @@ function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
       dI.set(d.id, on ? Math.max(0, (vd - d.vf) / d.ron) : 0);
     }
     const pinI = []; for (let p = 0; p < NP; p++) if (pinV[p] !== undefined) pinI[p] = (pinV[p] - v(node('B:' + pinName(p)))) / 25;
-    res = { V, gReal, dI, pinI, i5V: (5 - v(node('B:5V'))) / 0.05, i3V: (3.3 - v(node('B:3V3'))) / 0.5, v, ver: circuit.ver };
+    res = { V, gReal, dI, pinI, i5V: (5 - v(node(BRD.esp32 ? 'B:VIN' : 'B:5V'))) / 0.05, i3V: (3.3 - v(node('B:3V3'))) / 0.5, v, ver: circuit.ver };
     let moved = false;
     if (usedPrev) { if (!prevV) moved = true; else for (let i = 0; i < n; i++) if (Math.abs(V[i] - prevV[i]) > 1e-3) { moved = true; break; } }
     prevV = V;
@@ -406,7 +406,7 @@ function renderDynamic(){
   if (buzz) playTone(buzz._freq); else stopTone();
   const pinI = D.pinI || [];
   for (let p = 0; p < NP; p++) if (pinI[p] !== undefined && Math.abs(pinI[p]) > 0.04) warns.push(`${pinName(p)}: el pin entrega ${fmt(Math.abs(pinI[p]) * 1000, 0)} mA y el máximo del ${BRD.chipName} es 40 mA. Revisa si hay un corto o falta una resistencia.`);
-  if (D.sol && D.sol.i5V > 0.5) warns.push('Cortocircuito: 5V está unido directamente a GND.');
+  if (D.sol && D.sol.i5V > 0.5) warns.push(`Cortocircuito: ${BRD.esp32 ? 'VIN' : '5V'} está unido directamente a GND.`);
   if (D.sol && D.sol.i3V > 0.15) warns.push('Cortocircuito: 3,3 V está unido a GND o muy cargado.');
   if (running) for (const p of floatWarn) warns.push(`${pinName(p)}: la entrada queda flotante (sin nada que la fije a ${BRD.vio === 3.3 ? '3,3 V' : '5V'} o a GND) y lee valores al azar. Usa INPUT_PULLUP o una resistencia pull-down.`);
   for (const p of [BRD.uarts[0].rx, BRD.uarts[0].tx]) if (running && circuit.wired.has('B:D' + p)) { warns.push(`${BRD.label('D' + p)}: estos pines los usa el puerto serie (USB). Evita conectar cosas ahí si usas Serial.`); break; }
