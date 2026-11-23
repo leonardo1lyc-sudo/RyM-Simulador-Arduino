@@ -98,6 +98,8 @@ function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
     const driven = new Map(); for (let p = 0; p < NP; p++) if (pinV[p] !== undefined) { const i = node('B:' + pinName(p)); if (i >= 0 && !driven.has(i)) driven.set(i, pinV[p] / (BRD.vio || 5)); else if (i === -1) driven.set(-1, 0); }
     const prev = i => { usedPrev = true; return i < 0 || !prevV ? 0 : prevV[i] || 0; };
     const E = {
+      dt: mode.dt ?? (running ? 1e-4 : 0), // paso de tiempo para condensadores (0 = detenido: circuito abierto)
+      isrc: (f, t, I) => { if (f >= 0) b[f] -= I; if (t >= 0) b[t] += I; }, // fuente de corriente de f a t
       src: (a, g, Vs, R) => { const gg = 1 / Math.max(0.01, R); G2(a, g, gg); if (a >= 0) b[a] += Vs * gg; if (g >= 0) b[g] -= Vs * gg; },
       prev,
       level: i => driven.has(i) ? driven.get(i) : i < 0 ? 0 : (prev(i) > 2.5 ? 1 : 0),
@@ -146,7 +148,7 @@ const isFloating = (sol, key) => { const n = circuit.node(key); return n >= 0 &&
 let uno = null, running = false, hexLoaded = null, lastFrame = 0, speed = 1;
 const track = Array.from({ length: MAXP }, () => ({ high: 0, edge: 0, toggles: 0 }));
 let frameStart = 0;
-const devices = { servos: [], lcds: [], buzzers: [], i2c: [], sim: [] };
+const devices = { servos: [], lcds: [], buzzers: [], i2c: [], sim: [], step: [] };
 const simDevs = new Map(); // id de componente -> modelo de dispositivo (modules.js)
 const lcdModels = new Map();  // id de componente -> HD44780
 const servoAngles = new Map();
@@ -159,6 +161,7 @@ function pinOfTerm(key){ // pin del Arduino unido a ese terminal (o -1)
 }
 function mapDevices(){
   devices.servos = []; devices.lcds = []; devices.buzzers = []; devices.i2c = []; devices.sim = [];
+  devices.step = state ? state.comps.filter(c => TYPES[c.type].step) : [];
   pinCache.clear();
   for (const id of [...simDevs.keys()]) if (!state.comps.some(c => c.id === id)) simDevs.delete(id);
   for (const c of state.comps) {
@@ -246,7 +249,7 @@ function onPin(p, s, old, cyc){
     } else { let v = 0; for (let i = 0; i < 4; i++) v |= hi(d.d[4 + i]) << i; d.lcd.pulse4(rs, v); }
   }
 }
-let lastSol = null, floatWarn = new Set();
+let lastSol = null, floatWarn = new Set(), capCyc = 0;
 function applyInputs(cyc){
   // rebotes del pulsador
   if (bounceQueue.length) {
@@ -259,9 +262,11 @@ function applyInputs(cyc){
     if (on && pin.mode !== 'OUTPUT') { pin.mode = 'OUTPUT'; pin.val = 1; pin.uart = true; elecDirty = true; dispDirty = true; }
     else if (!on && pin.uart) { pin.uart = false; pin.mode = 'INPUT'; pin.val = 0; elecDirty = true; dispDirty = true; }
   });
+  const dtc = Math.max(1e-7, (cyc - capCyc) / FREQ); capCyc = cyc;
   if (!elecDirty) return;
   elecDirty = false;
-  const sol = solve({ pwm: 'inst' }); lastSol = sol;
+  const sol = solve({ pwm: 'inst', dt: dtc }); lastSol = sol;
+  for (const c of devices.step) if (TYPES[c.type].step(c, t => voltage(sol, `C${c.id}:${t}`), dtc)) { elecDirty = true; dispDirty = true; } // condensadores cargándose
   for (const d of devices.sim) if (d.update && d.update(t => voltage(sol, `C${d.c.id}:${t}`))) { elecDirty = true; dispDirty = true; }
   for (let p = 0; p < NP; p++) {
     const key = 'B:' + pinName(p); const v = voltage(sol, key);
@@ -296,11 +301,12 @@ function startSim(hex){
   uno.onSpi = b => { let r = 0xFF; for (const d of devices.sim) if (d.onSpi) { const v = d.onSpi(b); if (typeof v === 'number') r &= v; } return r; };
   for (const d of simDevs.values()) if (d.reset) d.reset();
   for (const c of state.comps) if (c._oled) c._oled.reset();
-  floatWarn.clear(); elecDirty = true; frameStart = 0; running = true; speed = 1;
+  for (const c of state.comps) if (TYPES[c.type].step) c._vc = 0; // condensadores descargados
+  floatWarn.clear(); elecDirty = true; frameStart = 0; running = true; speed = 1; capCyc = uno.cycles;
   lastFrame = performance.now();
   setStatus('run');
 }
-function stopSim(){ running = false; uno = null; esp = null; $('#webView').srcdoc = ''; updateWebPanel(); for (const d of simDevs.values()) if (d.reset) d.reset(); io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; p.uart = false; }); elecDirty = true; setStatus('stop'); stopTone(); }
+function stopSim(){ running = false; uno = null; esp = null; $('#webView').srcdoc = ''; updateWebPanel(); for (const d of simDevs.values()) if (d.reset) d.reset(); if (state) for (const c of state.comps) if (TYPES[c.type].step) c._vc = 0; io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; p.uart = false; }); elecDirty = true; setStatus('stop'); stopTone(); }
 function setStatus(s, extra){
   const st = $('#status'), run = $('#run');
   st.className = 'chip' + (s === 'run' ? ' on' : s === 'error' ? ' bad' : s === 'busy' ? ' busy' : '');

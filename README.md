@@ -15,6 +15,7 @@ Simulador de Arduino en el navegador con **emulación real del ATmega328P y el A
 - **Pantallas y entradas**: display de 7 segmentos (cátodo o ánodo común), TM1637 de 4 dígitos (librería TM1637Display), teclado matricial 4x4 (Keypad), encoder rotativo KY-040, receptor IR VS1838B con control remoto NEC (IRremote).
 - **Módulos con protocolo propio**: reloj DS1302 (Rtc by Makuna, 3 hilos), motor paso a paso 28BYJ-48 con driver ULN2003 (Stepper), lector RFID RC522 con tarjetas MIFARE Classic 1K que se pueden leer y escribir (MFRC522, SPI), termómetro DS18B20 (OneWire + DallasTemperature, con búsqueda de ROM).
 - **Tiras y aros LED**: tira WS2812B/NeoPixel de 1 a 15 LED y aro de 1 a 10 (Adafruit_NeoPixel; el protocolo se decodifica por tiempos, se pueden encadenar por DOUT → DIN y avisa del consumo), y tira o aro RGB común de ánodo común a 12 V o 5 V (avisa si un canal se maneja directo desde un pin en vez de con un transistor o MOSFET).
+- **Componentes electrónicos**: condensador cerámico (10 pF a 10 µF, con su código 104, 473…) y electrolítico (1 µF a 4700 µF, con tensión máxima) que se cargan y descargan en el tiempo (constante RC real; avisa si el electrolítico está invertido o pasado de tensión); diodos 1N4007, 1N4148 y 1N5819; Zener de 3,3 a 12 V; transistores NPN (2N2222A, BC547, TIP120) y PNP (2N2907A, BC557, TIP125) con corte, zona activa y saturación; MOSFET IRLZ44N e IRF540N; reguladores 7805, 7809, 7812 y AMS1117 de 3,3 y 5 V (caída mínima, calor). Cada uno tiene sus pines en el orden real del encapsulado.
 - **Librerías incluidas** además de las del núcleo: Servo, LiquidCrystal, DHT sensor library, Adafruit SSD1306, Adafruit GFX, Adafruit BusIO, Adafruit Unified Sensor y LedControl.
 - **Emulación real**: CPU AVR, timers y PWM, ADC, USART (monitor serie bidireccional), I2C, SPI, EEPROM e interrupciones externas. En el Mega: timers 0–5, cuatro USART, ADC de 16 canales e INT0–INT7.
 - **Librerías**: incluidas Servo, LiquidCrystal, Wire, SPI, EEPROM y SoftwareSerial. El usuario puede **cargar las suyas** como `.zip` (el mismo formato que «Añadir biblioteca .ZIP» del IDE) o como archivos `.h/.cpp`; se guardan en el navegador y se envían al compilar.
@@ -48,6 +49,7 @@ node test/e2e-kits.cjs        # módulos del kit KY, humedad de suelo, agua, rel
 node test/e2e-kits2.cjs       # 7 segmentos, TM1637, teclado 4x4, encoder, control IR
 node test/e2e-kits3.cjs       # DS1302, 28BYJ-48 + ULN2003, RC522, DS18B20
 node test/e2e-kits4.cjs       # tiras y aros LED (WS2812B y RGB comunes)
+node test/e2e-kits5.cjs       # condensadores (RC), diodos, Zener, transistores, MOSFET, reguladores
 node test/e2e-boards.cjs      # placas Nano y Mega 2560 (PWM de los 6 timers, A8, INT4, Serial1, I2C en 20/21)
 node test/e2e-esp32.cjs       # ESP32, ESP32-CAM, S3 y C3: WiFi y servidor web, Navegador, ADC de 12 bits, LEDC, BOOT, Bluetooth, fotos
 ```

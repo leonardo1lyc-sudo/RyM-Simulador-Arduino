@@ -1556,4 +1556,111 @@ void loop() {
 }
 `,
   },
+  condensador: {
+    title: 'Condensador: carga y descarga (RC)',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'res', x: 650, y: 230, rot: 0, name: 'R1', props: { ohms: 10000 } },
+          { id: 2, type: 'ecap', x: 780, y: 300, rot: 0, name: 'C1', props: { uf: 100, volts: 16 } },
+          { id: 3, type: 'led', x: 900, y: 240, rot: 0, name: 'LED1', props: { color: 'verde' } },
+          { id: 4, type: 'res', x: 900, y: 150, rot: 90, name: 'R2', props: { ohms: 1000 } },
+        ],
+        wires: [
+          { id: 10, a: 'B:D7', b: 'C1:a', pts: [], color: SIG[0] },
+          { id: 11, a: 'C1:b', b: 'C2:p', pts: [], color: SIG[0] },
+          { id: 12, a: 'C2:n', b: 'B:GND.2', pts: [], color: GND },
+          { id: 13, a: 'C2:p', b: 'B:A0', pts: [], color: SIG[2] },
+          { id: 14, a: 'B:D8', b: 'C4:a', pts: [], color: SIG[1] },
+          { id: 15, a: 'C4:b', b: 'C3:a', pts: [], color: SIG[1] },
+          { id: 16, a: 'C3:k', b: 'B:GND.3', pts: [], color: GND },
+        ],
+        counters: { res: 2, ecap: 1, led: 1 },
+      };
+    },
+    code: `// Condensador: carga y descarga a través de una resistencia (circuito RC)
+// R1 = 10 kΩ y C1 = 100 µF: τ = R·C = 1 segundo.
+// El pin 7 carga el condensador 5 s y lo descarga otros 5 s; A0 mide su tensión.
+// Abre el monitor serie para ver la curva; el LED del pin 8 indica si está cargando.
+
+const int CARGA = 7, LED = 8;
+
+void setup() {
+  pinMode(CARGA, OUTPUT);
+  pinMode(LED, OUTPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  for (int fase = 0; fase < 2; fase++) {
+    bool cargando = (fase == 0);
+    digitalWrite(CARGA, cargando ? HIGH : LOW);
+    digitalWrite(LED, cargando ? HIGH : LOW);
+    Serial.println(cargando ? "-- cargando --" : "-- descargando --");
+    for (int i = 0; i <= 10; i++) {
+      float v = analogRead(A0) * 5.0 / 1023.0;
+      Serial.print(i * 0.5, 1);
+      Serial.print(" s: ");
+      Serial.print(v, 2);
+      Serial.println(" V");
+      delay(500);
+    }
+  }
+}
+`,
+  },
+  tiracomun: {
+    title: 'Tira RGB de 12 V con MOSFET',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'rgbstrip', x: 690, y: 90, rot: 0, name: 'TIRA1', props: { n: 12, volts: 12 } },
+          { id: 2, type: 'mosfet', x: 700, y: 300, rot: 0, name: 'Q1', props: { model: 'IRLZ44N' } },
+          { id: 3, type: 'mosfet', x: 800, y: 300, rot: 0, name: 'Q2', props: { model: 'IRLZ44N' } },
+          { id: 4, type: 'mosfet', x: 900, y: 300, rot: 0, name: 'Q3', props: { model: 'IRLZ44N' } },
+          { id: 5, type: 'battery', x: 1000, y: 470, rot: 0, name: 'BAT1', props: { volts: 12 } },
+        ],
+        wires: [
+          { id: 10, a: 'C5:p', b: 'C1:V', pts: [], color: RED },
+          { id: 11, a: 'C1:R', b: 'C2:D', pts: [], color: '#e53935' },
+          { id: 12, a: 'C1:G', b: 'C3:D', pts: [], color: '#2e7d32' },
+          { id: 13, a: 'C1:B', b: 'C4:D', pts: [], color: '#1565c0' },
+          { id: 14, a: 'B:D9', b: 'C2:G', pts: [], color: SIG[0] },
+          { id: 15, a: 'B:D10', b: 'C3:G', pts: [], color: SIG[3] },
+          { id: 16, a: 'B:D11', b: 'C4:G', pts: [], color: SIG[4] },
+          { id: 17, a: 'C2:S', b: 'C3:S', pts: [], color: GND },
+          { id: 18, a: 'C3:S', b: 'C4:S', pts: [], color: GND },
+          { id: 19, a: 'C4:S', b: 'C5:n', pts: [], color: GND },
+          { id: 20, a: 'C5:n', b: 'B:GND.3', pts: [], color: GND },
+        ],
+        counters: { rgbstrip: 1, mosfet: 3, battery: 1 },
+      };
+    },
+    code: `// Tira LED RGB común de 12 V manejada con tres MOSFET IRLZ44N
+// Cada MOSFET une un color de la tira (R, G o B) con GND cuando su pin PWM está en alto.
+// La tira se alimenta con 12 V de la batería; el GND de la batería va al GND del Arduino.
+
+const int PIN_R = 9, PIN_G = 10, PIN_B = 11;
+
+void color(int r, int g, int b) {
+  analogWrite(PIN_R, r);
+  analogWrite(PIN_G, g);
+  analogWrite(PIN_B, b);
+}
+
+void setup() {
+  pinMode(PIN_R, OUTPUT);
+  pinMode(PIN_G, OUTPUT);
+  pinMode(PIN_B, OUTPUT);
+}
+
+void loop() {
+  color(255, 0, 0);   delay(1000);  // rojo
+  color(0, 255, 0);   delay(1000);  // verde
+  color(0, 0, 255);   delay(1000);  // azul
+  color(255, 120, 0); delay(1000);  // naranja
+  for (int i = 0; i <= 255; i += 5) { color(i, 0, 255 - i); delay(20); }  // de azul a rojo
+}
+`,
+  },
 };

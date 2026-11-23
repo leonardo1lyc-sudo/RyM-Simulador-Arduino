@@ -4,6 +4,7 @@ import { KITS } from './kits.js';
 import { KITS2 } from './kits2.js';
 import { KITS3 } from './kits3.js';
 import { KITS4 } from './kits4.js';
+import { KITS5 } from './kits5.js';
 export const LED_COLORS = {
   rojo:    { c: '#ff3b30', off: '#8a2a24', vf: 1.8 },
   naranja: { c: '#ff8a1f', off: '#8a4a1a', vf: 1.9 },
@@ -174,7 +175,7 @@ export const TYPES = {
     },
     elec(c, T, E){ E.res(T('VCC'), T('GND'), 5000); E.res(T('SDA'), T('VCC'), 10000); E.res(T('SCL'), T('VCC'), 10000); },
   },
-  ...MODULES, ...KITS, ...KITS2, ...KITS3, ...KITS4,
+  ...MODULES, ...KITS, ...KITS2, ...KITS3, ...KITS4, ...KITS5,
 };
 
 export const LIBRARY = [
@@ -186,7 +187,8 @@ export const LIBRARY = [
   { cat: 'Pantallas', items: ['lcd', 'lcdi2c', 'oled', 'max7219', 'seg7', 'tm1637'] },
   { cat: 'Comunicación', items: ['hc05', 'irrx', 'irremote'] },
   { cat: 'Módulos', items: ['ds1302', 'rc522'] },
-  { cat: 'Pasivos y energía', items: ['res', 'battery', { soon: true, name: 'Condensador' }] },
+  { cat: 'Pasivos y energía', items: ['res', 'cap', 'ecap', 'battery', 'vreg'] },
+  { cat: 'Semiconductores', items: ['diode', 'zener', 'npn', 'pnp', 'mosfet'] },
 ];
 
 export function icon(type){
