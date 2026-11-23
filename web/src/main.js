@@ -14,6 +14,8 @@ import { TYPES, LIBRARY, LED_COLORS, RES_VALUES, fmt, fmtOhm, icon, ldrOhms } fr
 import { SSD1306, oledImage } from './modules.js';
 import { EXAMPLES } from './examples.js';
 import { initAI } from './ai.js';
+import { createZoom, WORLD } from './zoom.js';
+import { initLayout } from './layout.js';
 import { listLibraries, saveLibrary, deleteLibrary, importZip, importFiles } from './libs.js';
 
 const $ = s => document.querySelector(s);
@@ -28,7 +30,7 @@ const pinName = p => BRD.pinName(p);
 const pinTitle = id => BRD.title(id);
 function drawBoard(){
   $('#boardLayer').innerHTML = BRD.draw();
-  $('#svg').setAttribute('viewBox', `0 0 ${BRD.canvasW} 700`);
+  zoom.setBase(BRD.canvasW, 700);
   $('#boardSel').value = BRD.id;
 }
 function setBoard(id){ BRD = BOARDS[id] || BOARDS.uno; BPIN = BRD.terms; NP = BRD.pins.length; pinCache.clear(); drawBoard(); }
@@ -640,6 +642,8 @@ function ctrlText(k, v){ return k.pct ? Math.round(v * 100) + ' %' : (Number.isI
 
 /* ======================= Interacción con el lienzo ======================= */
 const svg = $('#svg');
+const zoom = createZoom(svg, { isBusy: () => !!drawing || !!drag, onChange: p => { const z = $('#zoomPct'); if (z) z.textContent = p + ' %'; } });
+$('#zoomIn').onclick = () => zoom.zoomIn(); $('#zoomOut').onclick = () => zoom.zoomOut(); $('#zoomFit').onclick = () => zoom.fit(); $('#zoomPct').onclick = () => zoom.reset();
 function svgPt(e){ const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; const m = svg.getScreenCTM(); return m ? p.matrixTransform(m.inverse()) : { x: 0, y: 0 }; }
 const snap = v => Math.round(v / 10) * 10;
 function setHint(msg){
@@ -702,7 +706,7 @@ svg.addEventListener('pointermove', e => {
   if (drawing) { drawing.cur = pt; renderWires(); }
   if (!drag) return;
   if (drag.kind === 'move') {
-    const nx = clamp(snap(pt.x - drag.ox), 20, BRD.canvasW - 20), ny = clamp(snap(pt.y - drag.oy), 20, 680);
+    const nx = clamp(snap(pt.x - drag.ox), WORLD.x0, WORLD.x1), ny = clamp(snap(pt.y - drag.oy), WORLD.y0, WORLD.y1);
     if (nx !== drag.c.x || ny !== drag.c.y) {
       for (const r of drag.riders) { r.x += nx - drag.c.x; r.y += ny - drag.c.y; q(`[data-comp="${r.id}"]`).setAttribute('transform', `translate(${r.x},${r.y}) rotate(${r.rot})`); } // lo que está enchufado se mueve con la protoboard
       drag.c.x = nx; drag.c.y = ny; drag.moved = true; q(`[data-comp="${drag.c.id}"]`).setAttribute('transform', `translate(${nx},${ny}) rotate(${drag.c.rot})`); renderTerms(); renderWires();
@@ -791,6 +795,8 @@ function addComp(type, x, y){
     const spots = [[720, 110], [860, 110], [1000, 110], [720, 300], [880, 300], [1000, 300], [720, 470], [880, 470], [1000, 470], [660, 620], [840, 620]].map(([sx, sy]) => [sx + ox, sy]);
     const free = spots.find(([sx, sy]) => !state.comps.some(c => Math.abs(c.x - sx) < 80 && Math.abs(c.y - sy) < 80)) || [640 + ox + Math.random() * 380 | 0, 80 + Math.random() * 500 | 0];
     [x, y] = free.map(snap);
+    const v = zoom.visible(); // si el lugar habitual no se ve (lienzo desplazado), va al centro de la vista
+    if (x < v.x + 40 || x > v.x + v.w - 40 || y < v.y + 40 || y > v.y + v.h - 40) { x = snap(v.x + v.w / 2 + (Math.random() - .5) * 120); y = snap(v.y + v.h / 2 + (Math.random() - .5) * 80); }
   }
   state.counters[type] = (state.counters[type] || 0) + 1;
   const c = { id: state.nextId++, type, x, y, rot: 0, name: TYPES[type].prefix + state.counters[type], props: TYPES[type].props() };
@@ -1041,6 +1047,7 @@ $('#download').addEventListener('click', downloadIno);
 exSel.addEventListener('change', e => { if (e.target.value) { applyState(exampleState(e.target.value)); e.target.value = ''; } });
 
 /* ======================= Arranque ======================= */
+initLayout();
 renderLibrary();
 applyState(loadState() || exampleState('completo'));
 initAI({ TYPES, BOARDS, getState: () => state, applyState, wireColor: (a, b, i) => { const s = a + b; if (/GND|:gnd|:VSS|:K\b/.test(s)) return '#212121'; if (/5V|3V3|IOREF|VIN|:vcc|:VCC|:VDD/.test(s)) return '#e53935'; return ['#2e7d32', '#f9a825', '#1565c0', '#ef6c00', '#8e24aa'][i % 5]; } });
