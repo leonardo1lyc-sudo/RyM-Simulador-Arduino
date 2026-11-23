@@ -1038,4 +1038,173 @@ void loop() {
 }
 `,
   },
+  reloj: {
+    title: 'Reloj DS1302 (fecha y hora)',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'ds1302', x: 820, y: 300, rot: 0, name: 'RTC1', props: {} }],
+        wires: [
+          { id: 10, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 11, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+          { id: 12, a: 'C1:CLK', b: 'B:D5', pts: [], color: SIG[0] },
+          { id: 13, a: 'C1:DAT', b: 'B:D4', pts: [], color: SIG[1] },
+          { id: 14, a: 'C1:RST', b: 'B:D2', pts: [], color: SIG[2] },
+        ],
+        counters: { ds1302: 1 },
+      };
+    },
+    code: `// Reloj DS1302: muestra la fecha y la hora cada segundo (librería Rtc by Makuna).
+#include <ThreeWire.h>
+#include <RtcDS1302.h>
+
+ThreeWire cables(4, 5, 2);        // DAT, CLK, RST
+RtcDS1302<ThreeWire> reloj(cables);
+
+void setup() {
+  Serial.begin(9600);
+  reloj.Begin();
+  if (reloj.GetIsWriteProtected()) reloj.SetIsWriteProtected(false);
+  if (!reloj.GetIsRunning()) reloj.SetIsRunning(true);
+  RtcDateTime compilado = RtcDateTime(__DATE__, __TIME__);
+  if (!reloj.IsDateTimeValid() || reloj.GetDateTime() < compilado) reloj.SetDateTime(compilado);
+}
+
+void loop() {
+  RtcDateTime t = reloj.GetDateTime();
+  char texto[24];
+  snprintf(texto, sizeof(texto), "%02u/%02u/%04u %02u:%02u:%02u",
+           t.Day(), t.Month(), t.Year(), t.Hour(), t.Minute(), t.Second());
+  Serial.println(texto);
+  delay(1000);
+}
+`,
+  },
+  pasoapaso: {
+    title: 'Motor paso a paso 28BYJ-48 (ULN2003)',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'stepper', x: 860, y: 300, rot: 0, name: 'M1', props: {} }],
+        wires: [
+          { id: 10, a: 'C1:IN1', b: 'B:D8', pts: [], color: SIG[0] },
+          { id: 11, a: 'C1:IN2', b: 'B:D9', pts: [], color: SIG[1] },
+          { id: 12, a: 'C1:IN3', b: 'B:D10', pts: [], color: SIG[2] },
+          { id: 13, a: 'C1:IN4', b: 'B:D11', pts: [], color: SIG[3] },
+          { id: 14, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 15, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+        ],
+        counters: { stepper: 1 },
+      };
+    },
+    code: `// Motor 28BYJ-48: un cuarto de vuelta a cada lado (librería Stepper).
+#include <Stepper.h>
+
+const int PASOS_POR_VUELTA = 2048;
+Stepper motor(PASOS_POR_VUELTA, 8, 10, 9, 11); // IN1, IN3, IN2, IN4
+
+void setup() {
+  motor.setSpeed(12);   // rpm (el 28BYJ-48 llega a unas 15)
+  Serial.begin(9600);
+}
+
+void loop() {
+  Serial.println("Horario 90 grados");
+  motor.step(PASOS_POR_VUELTA / 4);
+  delay(500);
+  Serial.println("Antihorario 90 grados");
+  motor.step(-PASOS_POR_VUELTA / 4);
+  delay(500);
+}
+`,
+  },
+  rfid: {
+    title: 'Lector RFID RC522',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'rc522', x: 840, y: 260, rot: 0, name: 'RFID1', props: { card: 'tarjeta', near: false } }],
+        wires: [
+          { id: 10, a: 'C1:SDA', b: 'B:D10', pts: [], color: SIG[0] },
+          { id: 11, a: 'C1:SCK', b: 'B:D13', pts: [], color: SIG[1] },
+          { id: 12, a: 'C1:MOSI', b: 'B:D11', pts: [], color: SIG[2] },
+          { id: 13, a: 'C1:MISO', b: 'B:D12', pts: [], color: SIG[3] },
+          { id: 14, a: 'C1:RST', b: 'B:D9', pts: [], color: SIG[4] },
+          { id: 15, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+          { id: 16, a: 'C1:V33', b: 'B:3V3', pts: [], color: RED },
+        ],
+        counters: { rc522: 1 },
+      };
+    },
+    code: `// Lector RFID RC522: muestra el UID de la tarjeta y abre la "puerta" (LED 13) si es la autorizada.
+// Haz clic en la tarjeta para acercarla al lector. Cambia de tarjeta en el panel de propiedades.
+#include <SPI.h>
+#include <MFRC522.h>
+
+MFRC522 lector(10, 9);   // SDA (SS), RST
+byte autorizada[4] = {0x93, 0x3A, 0x7C, 0x1D};
+
+void setup() {
+  Serial.begin(9600);
+  SPI.begin();
+  lector.PCD_Init();
+  pinMode(LED_BUILTIN, OUTPUT);
+  Serial.println("Acerca una tarjeta...");
+}
+
+void loop() {
+  if (!lector.PICC_IsNewCardPresent() || !lector.PICC_ReadCardSerial()) return;
+  Serial.print("UID:");
+  bool ok = lector.uid.size == 4;
+  for (byte i = 0; i < lector.uid.size; i++) {
+    Serial.print(lector.uid.uidByte[i] < 0x10 ? " 0" : " ");
+    Serial.print(lector.uid.uidByte[i], HEX);
+    if (i < 4 && lector.uid.uidByte[i] != autorizada[i]) ok = false;
+  }
+  Serial.println(ok ? "  -> acceso permitido" : "  -> acceso denegado");
+  digitalWrite(LED_BUILTIN, ok ? HIGH : LOW);
+  lector.PICC_HaltA();
+}
+`,
+  },
+  temperatura: {
+    title: 'Termómetro DS18B20 (1-Wire)',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'ds18b20', x: 820, y: 330, rot: 0, name: 'T1', props: { temp: 23.5, pullup: false } },
+          { id: 2, type: 'res', x: 900, y: 230, rot: 90, name: 'R1', props: { ohms: 4700 } },
+        ],
+        wires: [
+          { id: 10, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+          { id: 11, a: 'C1:DQ', b: 'B:D2', pts: [], color: SIG[0] },
+          { id: 12, a: 'C1:VDD', b: 'B:5V', pts: [], color: RED },
+          { id: 13, a: 'C2:a', b: 'C1:DQ', pts: [], color: SIG[0] },
+          { id: 14, a: 'C2:b', b: 'B:5V', pts: [], color: RED },
+        ],
+        counters: { ds18b20: 1, res: 1 },
+      };
+    },
+    code: `// Termómetro DS18B20 (librerías OneWire y DallasTemperature).
+// La línea de datos necesita una resistencia de 4,7 kΩ a 5V.
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+OneWire bus(2);
+DallasTemperature sensores(&bus);
+
+void setup() {
+  Serial.begin(9600);
+  sensores.begin();
+  Serial.print("Sensores encontrados: ");
+  Serial.println(sensores.getDeviceCount());
+}
+
+void loop() {
+  sensores.requestTemperatures();
+  float t = sensores.getTempCByIndex(0);
+  Serial.print("Temperatura: ");
+  Serial.print(t);
+  Serial.println(" C");
+  delay(1000);
+}
+`,
+  },
 };

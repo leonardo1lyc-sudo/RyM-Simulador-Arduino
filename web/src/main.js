@@ -217,13 +217,14 @@ function powered(c){
 }
 
 function onPin(p, s, old, cyc){
-  for (const d of devices.sim) if (d.onPin) d.onPin(p, s, old, cyc);
   const t = track[p];
   if (old === PinState.High) t.high += cyc - t.edge;
   t.edge = cyc; t.toggles++;
   const pin = io.pins[p];
   pin.mode = s === PinState.High || s === PinState.Low ? 'OUTPUT' : s === PinState.InputPullUp ? 'INPUT_PULLUP' : 'INPUT';
   pin.val = s === PinState.High ? 1 : 0;
+  if (pin.uart && pin.mode !== 'OUTPUT') { pin.mode = 'OUTPUT'; pin.val = 1; }
+  for (const d of devices.sim) if (d.onPin) d.onPin(p, s, old, cyc); // después de actualizar io.pins: el modelo puede resolver el circuito al instante
   elecDirty = true; dispDirty = true;
   for (const d of devices.servos) if (d.sig === p) {
     if (s === PinState.High) d.rise = cyc;
@@ -283,7 +284,7 @@ function startSim(hex){
   mapDevices();
   uno.pinListeners.push(onPin);
   const dec = new TextDecoder(); uno.onSerial = (b, n) => { if (!n) { serialBuf += dec.decode(new Uint8Array([b]), { stream: true }); txFlash = performance.now(); } for (const d of devices.sim) if (d.hwRx && d.hwRx() === n) d.rx(b); };
-  uno.onSpi = b => { for (const d of devices.sim) if (d.onSpi) d.onSpi(b); return 0xFF; };
+  uno.onSpi = b => { let r = 0xFF; for (const d of devices.sim) if (d.onSpi) { const v = d.onSpi(b); if (typeof v === 'number') r &= v; } return r; };
   for (const d of simDevs.values()) if (d.reset) d.reset();
   for (const c of state.comps) if (c._oled) c._oled.reset();
   floatWarn.clear(); elecDirty = true; frameStart = 0; running = true; speed = 1;
@@ -420,7 +421,7 @@ function renderDynamic(){
 function renderCtx(c, D, warns, now){
   const T = t => `C${c.id}:${t}`; const api = devApi(c);
   return {
-    q, now, running, warn: w => warns.push(w), V: t => voltage(D.sol, T(t)), powered: api.powered, led: id => D.led.get(id),
+    q, now, running, warn: w => warns.push(w), V: t => voltage(D.sol, T(t)), powered: api.powered, led: id => D.led.get(id), dev: x => simDevs.get(x.id),
     wired: t => circuit.wired.has(T(t)),
     drivenBy: t => { const p = pinOf(T(t)); return p >= 0 && io.pins[p].mode === 'OUTPUT' ? p : -1; },
   };
@@ -635,6 +636,7 @@ svg.addEventListener('pointerdown', e => {
     if (ctrl.dataset.ctrl === 'reset') { if (hexLoaded) startSim(); return; }
     const c = compById(+ctrl.dataset.id);
     if (ctrl.dataset.ctrl === 'tap') { const d = simDevs.get(c.id); if (d && d.tap) d.tap(ctrl.dataset); dispDirty = true; }
+    else if (ctrl.dataset.ctrl === 'card') { c.props.near = !c.props.near; renderComps(); elecDirty = true; dispDirty = true; scheduleSave(); updateProps(true); }
     else if (ctrl.dataset.ctrl === 'key') { pressKey(c, +ctrl.dataset.key); drag = { kind: 'key', c }; }
     else if (ctrl.dataset.ctrl === 'joy') {
       const [lx, ly] = rot(pt.x - c.x, pt.y - c.y, -c.rot);
