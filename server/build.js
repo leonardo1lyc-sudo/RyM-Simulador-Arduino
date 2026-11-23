@@ -1,4 +1,4 @@
-// Compilación de sketches de Arduino Uno con avr-gcc y el núcleo oficial ArduinoCore-avr.
+// Compilación de sketches de Arduino (Uno, Nano, Mega) con avr-gcc y el núcleo oficial ArduinoCore-avr.
 // Reproduce lo esencial de arduino-cli: preprocesado del .ino, resolución de librerías por #include,
 // núcleo precompilado y enlace a un .hex.
 import { execFile } from 'node:child_process';
@@ -20,10 +20,20 @@ const TOOL = n => (process.env.AVR_BIN ? path.join(process.env.AVR_BIN, n) : n);
 const rel = p => { const r = path.relative(ROOT, p); return r.startsWith('..') ? p : r; };
 const relV = p => { const r = path.relative(VENDOR, p); return r.startsWith('..') ? rel(p) : 'vendor:' + r; };
 
-const MCU = ['-mmcu=atmega328p', '-DF_CPU=16000000L', '-DARDUINO=10819', '-DARDUINO_AVR_UNO', '-DARDUINO_ARCH_AVR'];
-const CFLAGS = ['-c', '-g', '-Os', '-w', '-std=gnu11', '-ffunction-sections', '-fdata-sections', '-MMD', ...MCU];
-const CXXFLAGS = ['-c', '-g', '-Os', '-w', '-std=gnu++11', '-fpermissive', '-fno-exceptions', '-ffunction-sections', '-fdata-sections', '-fno-threadsafe-statics', '-Wno-error=narrowing', ...MCU];
-const SFLAGS = ['-c', '-g', '-x', 'assembler-with-cpp', ...MCU];
+// Placas soportadas: microcontrolador, variante del núcleo y memoria disponible para el sketch.
+export const BOARDS = {
+  uno: { name: 'Arduino Uno', mcu: 'atmega328p', define: 'ARDUINO_AVR_UNO', variant: 'standard', flashMax: 32256, ramMax: 2048 },
+  nano: { name: 'Arduino Nano', mcu: 'atmega328p', define: 'ARDUINO_AVR_NANO', variant: 'eightanaloginputs', flashMax: 30720, ramMax: 2048 },
+  mega: { name: 'Arduino Mega 2560', mcu: 'atmega2560', define: 'ARDUINO_AVR_MEGA2560', variant: 'mega', flashMax: 253952, ramMax: 8192 },
+};
+const flagsFor = b => {
+  const MCU = ['-mmcu=' + b.mcu, '-DF_CPU=16000000L', '-DARDUINO=10819', '-D' + b.define, '-DARDUINO_ARCH_AVR'];
+  return {
+    c: ['-c', '-g', '-Os', '-w', '-std=gnu11', '-ffunction-sections', '-fdata-sections', '-MMD', ...MCU],
+    cxx: ['-c', '-g', '-Os', '-w', '-std=gnu++11', '-fpermissive', '-fno-exceptions', '-ffunction-sections', '-fdata-sections', '-fno-threadsafe-statics', '-Wno-error=narrowing', ...MCU],
+    s: ['-c', '-g', '-x', 'assembler-with-cpp', ...MCU],
+  };
+};
 const SRC_EXT = new Set(['.c', '.cpp', '.S']);
 export const TEXT_EXT = new Set(['.h', '.hh', '.hpp', '.c', '.cpp', '.cc', '.cxx', '.S', '.inl', '.tpp', '.ipp', '.properties', '.txt']);
 
@@ -41,9 +51,10 @@ async function walk(dir, recursive){
 }
 
 /* ---------- caché de objetos compilados ---------- */
-async function compileObj(src, includes, label, ctx){
+async function compileObj(src, includes, label, ctx, board = BOARDS.uno){
   const ext = path.extname(src);
-  const flags = ext === '.c' ? CFLAGS : ext === '.S' ? SFLAGS : CXXFLAGS;
+  const F = flagsFor(board);
+  const flags = ext === '.c' ? F.c : ext === '.S' ? F.s : F.cxx;
   const tool = ext === '.c' || ext === '.S' ? TOOL('avr-gcc') : TOOL('avr-g++');
   const inc = includes.map(i => '-I' + i);
   // Clave: contenido del fichero + flags + includes (los headers incluidos se cubren con el hash del conjunto de includes)
@@ -63,15 +74,17 @@ async function compileObj(src, includes, label, ctx){
 }
 
 /* ---------- núcleo precompilado ---------- */
-let corePromise = null;
-export function buildCore(){
+const corePromises = new Map();
+export function buildCore(boardId = 'uno'){
+  const board = BOARDS[boardId] || BOARDS.uno;
+  let corePromise = corePromises.get(board);
   if (!corePromise) corePromise = (async () => {
     const coreDir = path.join(CORE, 'cores', 'arduino');
-    const variant = path.join(CORE, 'variants', 'standard');
+    const variant = path.join(CORE, 'variants', board.variant);
     const files = (await walk(coreDir, false)).filter(f => SRC_EXT.has(path.extname(f)));
     const objs = [];
-    for (const f of files) objs.push(await compileObj(f, [coreDir, variant], 'core'));
-    const name = 'core-' + sha(objs.map(o => path.basename(o)).join('|')) + '.a';
+    for (const f of files) objs.push(await compileObj(f, [coreDir, variant], 'core', null, board));
+    const name = 'core-' + board.mcu + '-' + sha(objs.map(o => path.basename(o)).join('|')) + '.a';
     let lib = path.join(CACHE, name);
     if (SEED && !fss.existsSync(lib) && fss.existsSync(path.join(SEED, name))) lib = path.join(SEED, name);
     else if (!fss.existsSync(lib)) {
@@ -80,7 +93,8 @@ export function buildCore(){
       await fs.rename(tmp, lib);
     }
     return { lib, includes: [coreDir, variant] };
-  })().catch(e => { corePromise = null; throw e; });
+  })().catch(e => { corePromises.delete(board); throw e; });
+  corePromises.set(board, corePromise);
   return corePromise;
 }
 
@@ -216,11 +230,13 @@ function parseDiagnostics(out, dirs){
 
 /* ---------- compilación completa ---------- */
 const MAX_FILE = 512 * 1024;
-export async function compileSketch({ sketch, files = {}, libraries = [] }){
+export async function compileSketch({ sketch, files = {}, libraries = [], board: boardId = 'uno' }){
+  if (!Object.hasOwn(BOARDS, boardId)) throw new BuildError(`Placa desconocida: ${boardId}`);
+  const board = BOARDS[boardId];
   if (typeof sketch !== 'string' || !sketch.trim()) throw new BuildError('El sketch está vacío.');
   if (sketch.length > MAX_FILE) throw new BuildError('El sketch es demasiado grande.');
   checkSource(sketch, 'sketch.ino');
-  const core = await buildCore();
+  const core = await buildCore(boardId);
   const work = await fs.mkdtemp(path.join(os.tmpdir(), 'banco-build-'));
   const dirMap = [];
   try {
@@ -264,7 +280,7 @@ export async function compileSketch({ sketch, files = {}, libraries = [] }){
       for (const h of await includesOf(f)) {
         if (localHeaders.has(h) || coreHeaders.has(h)) continue;
         const l = byHeader.get(h);
-        if (!l) { if (!/^(avr|util|stdlib|stdio|string|math|inttypes|stdint|stdbool|stddef|ctype|limits|errno|setjmp|stdarg|assert|time|alloca)\b|^(new|cstdlib|cstring|cmath)$/.test(h.replace(/\.h$/, '')) && !missing.includes(h)) missing.push(h); continue; }
+        if (!l) { if (!/^(avr|util|stdlib|stdio|string|math|inttypes|stdint|stdbool|stddef|ctype|limits|errno|setjmp|stdarg|assert|time|alloca)\b|^(new|cstdlib|cstring|cmath)$/.test(h.replace(/\.h$/, '')) && !missing.includes(h) && f.startsWith(sketchDir)) missing.push(h); continue; }
         if (l.incompatible) throw new BuildError(`La librería ${l.name} no es compatible con AVR (architectures=${l.incompatible}).`);
         if (!usedSet.has(l)) { usedSet.add(l); used.push(l); queue.push(...await librarySources(l)); queue.push(...(await walk(l.srcRoot, l.hasSrc)).filter(x => /\.(h|hpp)$/.test(x))); }
       }
@@ -277,7 +293,7 @@ export async function compileSketch({ sketch, files = {}, libraries = [] }){
     const objs = []; let log = '';
     const ctx = { work, key: sha(JSON.stringify([files, libraries])) };
     const tryCompile = async (f, label) => {
-      try { objs.push(await compileObj(f, includes, label, label === 'sketch' ? null : ctx)); }
+      try { objs.push(await compileObj(f, includes, label, label === 'sketch' ? null : ctx, board)); }
       catch (e) { log += (e.stderr || e.message || '') + '\n'; }
     };
     for (const f of (await walk(sketchDir, false)).filter(f => SRC_EXT.has(path.extname(f)) || f.endsWith('.ino.cpp'))) await tryCompile(f, 'sketch');
@@ -290,7 +306,7 @@ export async function compileSketch({ sketch, files = {}, libraries = [] }){
     // enlace
     const elf = path.join(work, 'sketch.elf');
     try {
-      await run(TOOL('avr-gcc'), ['-w', '-Os', '-g', '-Wl,--gc-sections', '-mmcu=atmega328p', '-o', elf, ...objs, core.lib, '-L' + work, '-lm'], { timeout: 60000, maxBuffer: 4 << 20 });
+      await run(TOOL('avr-gcc'), ['-w', '-Os', '-g', '-Wl,--gc-sections', '-mmcu=' + board.mcu, '-o', elf, ...objs, core.lib, '-L' + work, '-lm'], { timeout: 60000, maxBuffer: 4 << 20 });
     } catch (e) {
       const { diags, log: clean } = parseDiagnostics(e.stderr || e.message, dirMap);
       return { ok: false, diagnostics: diags.length ? diags : [{ file: '', line: 0, col: 0, type: 'error', message: clean.trim().slice(0, 500), es: null }], log: clean };
@@ -300,10 +316,11 @@ export async function compileSketch({ sketch, files = {}, libraries = [] }){
     const { stdout } = await run(TOOL('avr-size'), ['-A', elf]);
     const sec = n => { const m = new RegExp('^\\' + n + '\\s+(\\d+)', 'm').exec(stdout); return m ? +m[1] : 0; };
     const flash = sec('.text') + sec('.data'), ram = sec('.data') + sec('.bss');
-    const result = { ok: true, hex: await fs.readFile(hexFile, 'utf8'), size: { flash, flashMax: 32256, ram, ramMax: 2048 },
+    const result = { ok: true, hex: await fs.readFile(hexFile, 'utf8'), board: boardId, size: { flash, flashMax: board.flashMax, ram, ramMax: board.ramMax },
       libraries: used.map(l => ({ name: l.name, version: l.version, origin: l.origin })) };
-    if (ram > 2048) { result.ok = false; result.diagnostics = [{ file: '', line: 0, col: 0, type: 'error', message: 'not enough memory', es: `Las variables ocupan ${ram} bytes y el Uno solo tiene 2048 bytes de RAM.` }]; }
-    if (flash > 32256) { result.ok = false; result.diagnostics = [{ file: '', line: 0, col: 0, type: 'error', message: 'sketch too big', es: `El programa ocupa ${flash} bytes y el Uno solo tiene 32 256 bytes de flash disponibles.` }]; }
+    const n = board.name.replace('Arduino ', '');
+    if (ram > board.ramMax) { result.ok = false; result.diagnostics = [{ file: '', line: 0, col: 0, type: 'error', message: 'not enough memory', es: `Las variables ocupan ${ram} bytes y el ${n} solo tiene ${board.ramMax.toLocaleString('es')} bytes de RAM.` }]; }
+    if (flash > board.flashMax) { result.ok = false; result.diagnostics = [{ file: '', line: 0, col: 0, type: 'error', message: 'sketch too big', es: `El programa ocupa ${flash} bytes y el ${n} solo tiene ${board.flashMax.toLocaleString('es')} bytes de flash disponibles.` }]; }
     return result;
   } finally {
     fs.rm(work, { recursive: true, force: true }).catch(() => {});

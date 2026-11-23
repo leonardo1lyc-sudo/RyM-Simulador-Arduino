@@ -130,7 +130,7 @@ function relayDevice(c, api){
 /* =========================================================================
    Pantallas
    ========================================================================= */
-const OLED = header(['GND', 'VCC', 'SCL', 'SDA'], { x0: -21, y0: -48, dir: 'up', labels: { GND: 'GND', VCC: 'VCC (3,3–5 V)', SCL: 'SCL (A5)', SDA: 'SDA (A4)' } });
+const OLED = header(['GND', 'VCC', 'SCL', 'SDA'], { x0: -21, y0: -48, dir: 'up', labels: { GND: 'GND', VCC: 'VCC (3,3–5 V)', SCL: 'SCL (A5; 21 en el Mega)', SDA: 'SDA (A4; 20 en el Mega)' } });
 const MAX = header(['VCC', 'GND', 'DIN', 'CS', 'CLK'], { x0: -62, y0: -28, dir: 'left', labels: { VCC: 'VCC (5 V)', GND: 'GND', DIN: 'DIN (datos)', CS: 'CS / LOAD', CLK: 'CLK (reloj)' } });
 
 // Controlador SSD1306 (128×64) por I2C: comandos, modos de direccionamiento y RAM de 1 KB.
@@ -214,7 +214,7 @@ function maxDevice(c, api){
       if (p === api.pin('CLK') && s === PinState.High && old !== PinState.High) { const din = api.pin('DIN'); m.bit(din >= 0 && api.state(din) === PinState.High); }
       else if (p === api.pin('CS') && s === PinState.High && old !== PinState.High) m.load();
     },
-    onSpi(b){ if (api.pin('DIN') === 11 && api.pin('CLK') === 13) m.byte(b); }, // SPI por hardware (D11/D13)
+    onSpi(b){ const { mosi, sck } = api.board().spi; if (api.pin('DIN') === mosi && api.pin('CLK') === sck) m.byte(b); }, // SPI por hardware (D11/D13; D51/D52 en el Mega)
   };
 }
 
@@ -228,12 +228,13 @@ function btDevice(c, api){
   const dev = {
     rxText: '', log: [],
     reset(){ c._tx = 1; txFree = 0; rxBusy = false; },
-    hwTx(){ return api.pin('TXD') === 0; },  // TXD del módulo al RX hardware (D0)
-    hwRx(){ return api.pin('RXD') === 1; },  // TX hardware (D1) al RXD del módulo
+    // índice del puerto serie por hardware al que está conectado (o -1): 0 = D0/D1; en el Mega 1-3 = Serial1-3
+    hwTx(){ const p = api.pin('TXD'); return p < 0 ? -1 : api.board().uarts.findIndex(u => u.rx === p); },  // TXD del módulo al RX del Arduino
+    hwRx(){ const p = api.pin('RXD'); return p < 0 ? -1 : api.board().uarts.findIndex(u => u.tx === p); },  // TX del Arduino al RXD del módulo
     send(text){ // del celular al Arduino
       if (!api.running() || !api.powered('VCC', 'GND')) return false;
       const bytes = [...new TextEncoder().encode(text)];
-      if (dev.hwTx()) { api.serialWrite(bytes); return true; }
+      const hw = dev.hwTx(); if (hw >= 0) { api.serialWrite(bytes, hw); return true; }
       if (api.pin('TXD') < 0) return false;
       const bc = bitCyc(); let t = Math.max(api.now() + 32, txFree);
       for (const b of bytes) {
@@ -246,7 +247,7 @@ function btDevice(c, api){
     dec: new TextDecoder(),
     rx(b){ if (api.powered('VCC', 'GND')) dev.rxText += dev.dec.decode(new Uint8Array([b]), { stream: true }); },
     onPin(p, s, old, cyc){ // del Arduino al celular por software (SoftwareSerial)
-      if (p !== api.pin('RXD') || dev.hwRx() || rxBusy) return;
+      if (p !== api.pin('RXD') || dev.hwRx() >= 0 || rxBusy) return;
       if (old === PinState.High && s === PinState.Low) {
         rxBusy = true; const bc = bitCyc(); let byte = 0;
         for (let i = 0; i < 8; i++) api.schedule(cyc + bc * (1.5 + i), () => { if (api.state(p) === PinState.High) byte |= 1 << i; });

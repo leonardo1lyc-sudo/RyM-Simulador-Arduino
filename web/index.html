@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Banco Uno</title>
-<meta name="description" content="Simulador de Arduino Uno en el navegador con emulación AVR real, librerías y componentes interactivos.">
+<meta name="description" content="Simulador de Arduino (Uno, Nano y Mega 2560) en el navegador con emulación AVR real, librerías y componentes interactivos.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
@@ -14,7 +14,7 @@
 <header class="top">
   <div class="logo">
     <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect x="1" y="5" width="32" height="24" rx="4" fill="#0d6b78"/><rect x="6" y="8" width="22" height="3" fill="#1b1d1f"/><rect x="10" y="23" width="18" height="3" fill="#1b1d1f"/><circle cx="25" cy="17" r="3" fill="#ffb347"/></svg>
-    <div><h1>Banco Uno</h1><small>Simulador de Arduino Uno · emulación AVR real</small></div>
+    <div><h1>Banco Uno</h1><small>Simulador de Arduino Uno, Nano y Mega · emulación AVR real</small></div>
   </div>
   <div class="spacer"></div>
   <div class="sim-ctl">
@@ -58,6 +58,7 @@
       <button role="tab" data-tab="code" aria-selected="true">sketch.ino <span id="codeState"></span></button>
       <button role="tab" data-tab="libs" aria-selected="false">Librerías <span id="libCount"></span></button>
       <span class="spacer"></span>
+      <select id="boardSel" aria-label="Placa" title="Placa Arduino"></select>
       <select id="example" aria-label="Cargar ejemplo"></select>
     </div>
     <div id="codeView" class="view">

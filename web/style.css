@@ -151,3 +151,4 @@ button{cursor:pointer}
   .props{position:static;width:auto;margin:8px;box-shadow:none}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.tabs select+select{margin-left:6px}

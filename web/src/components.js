@@ -161,7 +161,7 @@ export const TYPES = {
   },
   lcdi2c: {
     label: 'LCD 16×2 I2C', prefix: 'LCD', cat: 'Pantallas',
-    terms: { GND: { x: -176, y: -21, ...dir(-1, 0), name: 'GND' }, VCC: { x: -176, y: -7, ...dir(-1, 0), name: 'VCC (5 V)' }, SDA: { x: -176, y: 7, ...dir(-1, 0), name: 'SDA (A4)' }, SCL: { x: -176, y: 21, ...dir(-1, 0), name: 'SCL (A5)' } },
+    terms: { GND: { x: -176, y: -21, ...dir(-1, 0), name: 'GND' }, VCC: { x: -176, y: -7, ...dir(-1, 0), name: 'VCC (5 V)' }, SDA: { x: -176, y: 7, ...dir(-1, 0), name: 'SDA (A4; 20 en el Mega)' }, SCL: { x: -176, y: 21, ...dir(-1, 0), name: 'SCL (A5; 21 en el Mega)' } },
     box: [-178, -82, 330, 146], props: () => ({ address: 0x27 }),
     svg(c){
       let s = lcdBody(c, `<rect x="-168" y="-32" width="22" height="64" rx="2" fill="#1d1d1d"/>`);

@@ -674,4 +674,138 @@ void loop() {
 }
 `,
   },
+  nano: {
+    title: 'Nano: potenciómetro en A7 y LED',
+    board: 'nano',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'res', x: 560, y: 560, rot: 0, name: 'R1', props: { ohms: 220 } },
+          { id: 2, type: 'led', x: 680, y: 500, rot: 0, name: 'LED1', props: { color: 'verde' } },
+          { id: 3, type: 'pot', x: 560, y: 180, rot: 0, name: 'POT1', props: { ohms: 10000, pos: 0.3 } },
+        ],
+        wires: [
+          { id: 10, a: 'B:D3', b: 'C1:a', pts: [], color: SIG[0] },
+          { id: 11, a: 'C1:b', b: 'C2:a', pts: [], color: SIG[0] },
+          { id: 12, a: 'C2:k', b: 'B:GND.2', pts: [[690, 600], [283.6, 600]], color: GND },
+          { id: 13, a: 'C3:p1', b: 'B:5V', pts: [[540, 270], [283.6, 270]], color: RED },
+          { id: 14, a: 'C3:w', b: 'B:A7', pts: [[560, 285], [266, 285]], color: SIG[2] },
+          { id: 15, a: 'C3:p3', b: 'B:GND.1', pts: [[580, 300], [318.8, 300]], color: GND },
+        ],
+        counters: { res: 1, led: 1, pot: 1 },
+      };
+    },
+    code: `// Arduino Nano: A6 y A7 son entradas solo analógicas (no sirven con digitalRead).
+// El potenciómetro en A7 regula el brillo del LED en D3 (PWM).
+
+const int PIN_LED = 3;
+const int PIN_POT = A7;
+
+void setup() {
+  pinMode(PIN_LED, OUTPUT);
+  Serial.begin(9600);
+  Serial.println("Arduino Nano listo");
+}
+
+void loop() {
+  int lectura = analogRead(PIN_POT);
+  analogWrite(PIN_LED, lectura / 4);
+  Serial.print("A7 = ");
+  Serial.println(lectura);
+  delay(250);
+}
+`,
+  },
+  mega: {
+    title: 'Mega: secuencia de LEDs en 22–28 y potenciómetro en A8',
+    board: 'mega',
+    build(){
+      const comps = [], wires = []; let w = 10;
+      [22, 24, 26, 28].forEach((pin, i) => {
+        const y = 150 + i * 120;
+        comps.push({ id: 1 + i * 2, type: 'res', x: 880, y, rot: 0, name: 'R' + (i + 1), props: { ohms: 220 } });
+        comps.push({ id: 2 + i * 2, type: 'led', x: 990, y: y - 50, rot: 0, name: 'LED' + (i + 1), props: { color: ['rojo', 'amarillo', 'verde', 'azul'][i] } });
+        wires.push({ id: w++, a: 'B:D' + pin, b: 'C' + (1 + i * 2) + ':a', pts: [], color: SIG[i] });
+        wires.push({ id: w++, a: 'C' + (1 + i * 2) + ':b', b: 'C' + (2 + i * 2) + ':a', pts: [], color: SIG[i] });
+        wires.push({ id: w++, a: 'C' + (2 + i * 2) + ':k', b: 'B:GND.4', pts: [[1000, y + 10], [1060, y + 10], [1060, 640], [770, 640], [770, 535.2]], color: GND });
+      });
+      comps.push({ id: 9, type: 'pot', x: 1200, y: 300, rot: 0, name: 'POT1', props: { ohms: 10000, pos: 0.5 } });
+      wires.push({ id: w++, a: 'C9:p1', b: 'B:5V.2', pts: [[1180, 380], [1120, 380], [1120, 200], [790, 200], [790, 236]], color: RED });
+      wires.push({ id: w++, a: 'C9:w', b: 'B:A8', pts: [[1200, 670], [494, 670]], color: SIG[4] });
+      wires.push({ id: w++, a: 'C9:p3', b: 'B:GND.5', pts: [[1220, 655], [800, 655], [800, 535.2]], color: GND });
+      return { comps, wires, counters: { res: 4, led: 4, pot: 1 } };
+    },
+    code: `// Arduino Mega 2560: 54 pines digitales, 16 entradas analógicas y 4 puertos serie.
+// Los LEDs de los pines 22, 24, 26 y 28 se encienden en secuencia;
+// el potenciómetro en A8 regula la velocidad.
+
+const int LEDS[] = {22, 24, 26, 28};
+const int N = 4;
+
+void setup() {
+  for (int i = 0; i < N; i++) pinMode(LEDS[i], OUTPUT);
+  Serial.begin(9600);
+  Serial.println("Arduino Mega listo");
+}
+
+void loop() {
+  int pausa = map(analogRead(A8), 0, 1023, 40, 600);
+  for (int i = 0; i < N; i++) {
+    digitalWrite(LEDS[i], HIGH);
+    delay(pausa);
+    digitalWrite(LEDS[i], LOW);
+  }
+  Serial.print("pausa = ");
+  Serial.print(pausa);
+  Serial.println(" ms");
+}
+`,
+  },
+  megaSerial1: {
+    title: 'Mega: Bluetooth HC-05 en Serial1 (pines 18 y 19)',
+    board: 'mega',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'res', x: 880, y: 140, rot: 0, name: 'R1', props: { ohms: 220 } },
+          { id: 2, type: 'led', x: 990, y: 80, rot: 0, name: 'LED1', props: { color: 'azul' } },
+          { id: 3, type: 'hc05', x: 1000, y: 360, rot: 0, name: 'BT1', props: { baud: 9600 } },
+        ],
+        wires: [
+          { id: 10, a: 'B:D13', b: 'C1:a', pts: [[225.2, 130], [800, 130], [800, 140]], color: SIG[0] },
+          { id: 11, a: 'C1:b', b: 'C2:a', pts: [], color: SIG[0] },
+          { id: 12, a: 'C2:k', b: 'B:GND.1', pts: [[1000, 170], [1000, 110], [207.6, 110]], color: GND },
+          { id: 13, a: 'C3:VCC', b: 'B:5V', pts: [[979, 660], [262.8, 660]], color: RED },
+          { id: 14, a: 'C3:GND', b: 'B:GND.2', pts: [[993, 675], [280.4, 675]], color: GND },
+          { id: 15, a: 'C3:TXD', b: 'B:D19', pts: [[1007, 470], [1080, 470], [1080, 160], [579.6, 160]], color: SIG[1] },
+          { id: 16, a: 'C3:RXD', b: 'B:D18', pts: [[1021, 480], [1100, 480], [1100, 150], [562, 150]], color: SIG[2] },
+        ],
+        counters: { res: 1, led: 1, hc05: 1 },
+      };
+    },
+    code: `// Mega: el HC-05 va al segundo puerto serie por hardware (Serial1: TX1 = 18, RX1 = 19),
+// así el monitor serie (Serial, USB) queda libre. Escribe en el panel "Celular (Bluetooth)":
+// "1" enciende el LED, "0" lo apaga.
+
+const int LED = 13;
+
+void setup() {
+  pinMode(LED, OUTPUT);
+  Serial.begin(9600);    // monitor serie
+  Serial1.begin(9600);   // Bluetooth
+  Serial1.println("Hola desde el Mega. Envia 1 o 0.");
+  Serial.println("Esperando datos por Bluetooth...");
+}
+
+void loop() {
+  if (Serial1.available()) {
+    char c = Serial1.read();
+    if (c == '1') { digitalWrite(LED, HIGH); Serial1.println("LED encendido"); }
+    else if (c == '0') { digitalWrite(LED, LOW); Serial1.println("LED apagado"); }
+    Serial.print("Recibido: ");
+    Serial.println(c);
+  }
+}
+`,
+  },
 };

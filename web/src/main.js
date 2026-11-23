@@ -1,4 +1,4 @@
-// Banco Uno: editor de circuitos + emulación AVR en vivo.
+// Banco Uno: editor de circuitos + emulación AVR en vivo (Arduino Uno, Nano y Mega 2560).
 import { EditorView, basicSetup } from 'codemirror';
 import { keymap } from '@codemirror/view';
 import { indentWithTab } from '@codemirror/commands';
@@ -6,7 +6,8 @@ import { cpp } from '@codemirror/lang-cpp';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { setDiagnostics, lintGutter } from '@codemirror/lint';
 import { tags } from '@lezer/highlight';
-import { Uno, PinState, FREQ } from './emulator.js';
+import { Board, PinState, FREQ } from './emulator.js';
+import { BOARDS } from './boards.js';
 import { HD44780, PCF8574Lcd, I2CBus } from './lcd.js';
 import { TYPES, LIBRARY, LED_COLORS, RES_VALUES, fmt, fmtOhm, icon, ldrOhms } from './components.js';
 import { SSD1306, oledImage } from './modules.js';
@@ -17,53 +18,17 @@ const $ = s => document.querySelector(s);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-/* ======================= Placa Uno ======================= */
-const PWM = new Set([3, 5, 6, 9, 10, 11]);
-const BOARD = { x: 40, y: 200, w: 500, h: 380 };
-const PITCH = 17.6;
-const BPIN = {};
-(function(){
-  const topY = BOARD.y + 20, botY = BOARD.y + BOARD.h - 20;
-  const add = (id, x, y, dy) => { BPIN[id] = { id, x, y, dx: 0, dy }; };
-  ['AREF', 'GND.1', 'D13', 'D12', 'D11', 'D10', 'D9', 'D8'].forEach((id, i) => add(id, BOARD.x + 150 + i * PITCH, topY, -1));
-  ['D7', 'D6', 'D5', 'D4', 'D3', 'D2', 'D1', 'D0'].forEach((id, i) => add(id, BOARD.x + 150 + 8 * PITCH + 10 + i * PITCH, topY, -1));
-  ['IOREF', 'RESET', '3V3', '5V', 'GND.2', 'GND.3', 'VIN'].forEach((id, i) => add(id, BOARD.x + 190 + i * PITCH, botY, 1));
-  ['A0', 'A1', 'A2', 'A3', 'A4', 'A5'].forEach((id, i) => add(id, BOARD.x + 190 + 7 * PITCH + 10 + i * PITCH, botY, 1));
-})();
-const pinName = p => p < 14 ? 'D' + p : 'A' + (p - 14);
-const pinTitle = id => {
-  if (id.startsWith('GND')) return 'GND (tierra, 0 V)'; if (id === '5V') return '5 V'; if (id === '3V3') return '3,3 V'; if (id === 'VIN') return 'VIN (no conectado en la simulación)';
-  if (id[0] === 'D') { const n = +id.slice(1); return `Pin digital ${n}${PWM.has(n) ? ' · PWM (~)' : ''}${n === 0 ? ' · RX del puerto serie' : n === 1 ? ' · TX del puerto serie' : ''}${n === 2 || n === 3 ? ' · interrupción externa' : ''}`; }
-  if (id[0] === 'A') return `Entrada analógica ${id} (pin ${14 + +id.slice(1)})${id === 'A4' ? ' · SDA (I2C)' : id === 'A5' ? ' · SCL (I2C)' : ''}`;
-  return id;
-};
+/* ======================= Placa ======================= */
+const MAXP = 70; // pines del Mega; Uno y Nano usan los primeros
+let BRD = BOARDS.uno, BPIN = BRD.terms, NP = BRD.pins.length;
+const pinName = p => BRD.pinName(p);
+const pinTitle = id => BRD.title(id);
 function drawBoard(){
-  const { x, y, w, h } = BOARD; let s = '';
-  s += `<rect x="${x - 14}" y="${y + 40}" width="74" height="62" rx="3" fill="#b9c0c4" stroke="#7d868b"/><rect x="${x - 6}" y="${y + 50}" width="22" height="42" fill="#8d969b"/>`;
-  s += `<rect x="${x - 10}" y="${y + 268}" width="66" height="58" rx="5" fill="#1d1f22"/><circle cx="${x + 14}" cy="${y + 297}" r="11" fill="#33373b"/>`;
-  s += `<path d="M${x} ${y + 8} q0 -8 8 -8 H${x + w - 24} l24 24 V${y + h - 34} l-14 14 V${y + h} H${x + 8} q-8 0 -8 -8 Z" fill="var(--pcb)" stroke="var(--pcb-edge)" stroke-width="2"/>`;
-  for (const [hx, hy] of [[x + 20, y + h - 16], [x + w - 28, y + 30], [x + w - 20, y + h - 60], [x + 70, y + 20]]) s += `<circle cx="${hx}" cy="${hy}" r="6" fill="var(--bg)" stroke="#d9c27a" stroke-width="2"/>`;
-  const hdr = ids => { const a = BPIN[ids[0]], b = BPIN[ids[ids.length - 1]]; return `<rect x="${a.x - 9}" y="${a.y - 9}" width="${b.x - a.x + 18}" height="18" rx="2" fill="var(--header)"/>` + ids.map(id => `<rect data-pinled="${id}" x="${BPIN[id].x - 3.5}" y="${BPIN[id].y - 3.5}" width="7" height="7" fill="#0c0c0c" stroke="#3a3a3a"/>`).join(''); };
-  s += hdr(['AREF', 'GND.1', 'D13', 'D12', 'D11', 'D10', 'D9', 'D8']) + hdr(['D7', 'D6', 'D5', 'D4', 'D3', 'D2', 'D1', 'D0']) + hdr(['IOREF', 'RESET', '3V3', '5V', 'GND.2', 'GND.3', 'VIN']) + hdr(['A0', 'A1', 'A2', 'A3', 'A4', 'A5']);
-  for (const id in BPIN) {
-    const p = BPIN[id]; let lab = id.replace(/\.\d/, '');
-    if (lab[0] === 'D') { const n = +lab.slice(1); lab = (PWM.has(n) ? '~' : '') + n; if (n === 1) lab = 'TX→1'; if (n === 0) lab = 'RX←0'; }
-    const ty = p.dy < 0 ? p.y + 14 : p.y - 14;
-    s += `<text class="silk" font-size="9" transform="translate(${p.x + 3},${ty}) rotate(-90)" text-anchor="${p.dy < 0 ? 'end' : 'start'}">${lab}</text>`;
-  }
-  s += `<text class="silk" x="${x + 250}" y="${y + 96}" font-size="10" text-anchor="middle">DIGITAL (PWM ~)</text>`;
-  s += `<text class="silk" x="${x + 282}" y="${y + h - 72}" font-size="10" text-anchor="middle">POWER</text><text class="silk" x="${x + 420}" y="${y + h - 72}" font-size="10" text-anchor="middle">ANALOG IN</text>`;
-  s += `<text x="${x + 300}" y="${y + 175}" font-family="var(--f-ui)" font-weight="700" font-style="italic" font-size="54" fill="var(--silk)" opacity=".92" text-anchor="middle" letter-spacing="2">UNO</text>`;
-  s += `<rect x="${x + 250}" y="${y + 232}" width="200" height="44" rx="3" fill="#202326"/>`;
-  for (let i = 0; i < 14; i++) s += `<rect x="${x + 256 + i * 13.8}" y="${y + 226}" width="6" height="6" fill="#bfc6c9"/><rect x="${x + 256 + i * 13.8}" y="${y + 276}" width="6" height="6" fill="#bfc6c9"/>`;
-  s += `<circle cx="${x + 262}" cy="${y + 254}" r="4" fill="#2c3034"/><text x="${x + 350}" y="${y + 258}" font-family="var(--f-code)" font-size="11" fill="#9aa3a6" text-anchor="middle">ATmega328P</text>`;
-  s += `<g class="ctrl" data-ctrl="reset"><rect x="${x + 24}" y="${y + 12}" width="22" height="22" rx="3" fill="#c9cfd2"/><circle cx="${x + 35}" cy="${y + 23}" r="6" fill="#d9442d"/><title>Reiniciar la placa</title></g><text class="silk" x="${x + 35}" y="${y + 46}" font-size="8" text-anchor="middle">RESET</text>`;
-  s += `<rect x="${x + 100}" y="${y + 130}" width="34" height="12" rx="2" fill="#c9cfd2"/><text class="silk" x="${x + 117}" y="${y + 156}" font-size="8" text-anchor="middle">16 MHz</text>`;
-  const led = (id, lx, ly, lab) => `<rect id="${id}" x="${lx}" y="${ly}" width="10" height="6" rx="1" fill="#4a3d1a"/><text class="silk" x="${lx + 14}" y="${ly + 6}" font-size="8">${lab}</text>`;
-  s += led('bL', x + 150, y + 60, 'L') + led('bTX', x + 150, y + 72, 'TX') + led('bRX', x + 150, y + 84, 'RX') + led('bON', x + 440, y + 120, 'ON');
-  s += `<rect x="${x + 438}" y="${y + 120}" width="10" height="6" rx="1" fill="#3cff7a" filter="url(#glowS)" opacity=".9"/>`;
-  $('#boardLayer').innerHTML = s;
+  $('#boardLayer').innerHTML = BRD.draw();
+  $('#svg').setAttribute('viewBox', `0 0 ${BRD.canvasW} 700`);
+  $('#boardSel').value = BRD.id;
 }
+function setBoard(id){ BRD = BOARDS[id] || BOARDS.uno; BPIN = BRD.terms; NP = BRD.pins.length; pinCache.clear(); drawBoard(); }
 
 /* ======================= Estado del editor ======================= */
 let state = null, sel = null, drawing = null, drag = null;
@@ -84,7 +49,7 @@ function termLabel(key){
 /* ======================= Circuito ======================= */
 const circuit = { ver: -1, map: new Map(), n: 0, node(k){ const v = this.map.get(k); return v === undefined ? -2 : v; } };
 let structVer = 0;
-const io = { pins: Array.from({ length: 20 }, () => ({ mode: 'INPUT', val: 0, duty: null })) }; // vista eléctrica de los pines
+const io = { pins: Array.from({ length: MAXP }, () => ({ mode: 'INPUT', val: 0, duty: null })) }; // vista eléctrica de los pines
 function rebuildCircuit(){
   const parent = new Map();
   const find = k => { let r = k; while (parent.get(r) !== r) r = parent.get(r); return r; };
@@ -92,7 +57,7 @@ function rebuildCircuit(){
   const keys = Object.keys(BPIN).map(id => 'B:' + id);
   for (const c of state.comps) for (const t in TYPES[c.type].terms) keys.push(`C${c.id}:${t}`);
   for (const k of keys) parent.set(k, k);
-  union('B:GND.1', 'B:GND.2'); union('B:GND.1', 'B:GND.3');
+  for (const net of BRD.nets) for (const k of net.slice(1)) union('B:' + net[0], 'B:' + k);
   for (const w of state.wires) if (parent.has(w.a) && parent.has(w.b)) union(w.a, w.b);
   const gnd = find('B:GND.1'); const idx = new Map(); circuit.map = new Map(); let n = 0;
   const count = new Map();
@@ -115,7 +80,7 @@ function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
     const G2 = (i, j, g) => { if (i >= 0) { Gm[i][i] += g; gReal[i] += g; } if (j >= 0) { Gm[j][j] += g; gReal[j] += g; } if (i >= 0 && j >= 0) { Gm[i][j] -= g; Gm[j][i] -= g; } };
     const SRC = (i, V, R, real = true) => { if (i < 0) return; Gm[i][i] += 1 / R; b[i] += V / R; if (real) gReal[i] += 1 / R; };
     const pinV = [];
-    for (let p = 0; p < 20; p++) {
+    for (let p = 0; p < NP; p++) {
       const s = io.pins[p], i = node('B:' + pinName(p));
       if (s.mode === 'OUTPUT') {
         let V = s.val * 5;
@@ -124,9 +89,9 @@ function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
       } else if (s.mode === 'INPUT_PULLUP') SRC(i, 5, 35000);
       else SRC(i, 0, 1e8, false);
     }
-    SRC(node('B:5V'), 5, 0.05); SRC(node('B:IOREF'), 5, 0.05); SRC(node('B:3V3'), 3.3, 0.5); SRC(node('B:RESET'), 5, 10000);
+    for (const [id, V, R] of BRD.supplies) SRC(node('B:' + id), V, R);
     const diodes = [];
-    const driven = new Map(); for (let p = 0; p < 20; p++) if (pinV[p] !== undefined) { const i = node('B:' + pinName(p)); if (i >= 0 && !driven.has(i)) driven.set(i, pinV[p] / 5); else if (i === -1) driven.set(-1, 0); }
+    const driven = new Map(); for (let p = 0; p < NP; p++) if (pinV[p] !== undefined) { const i = node('B:' + pinName(p)); if (i >= 0 && !driven.has(i)) driven.set(i, pinV[p] / 5); else if (i === -1) driven.set(-1, 0); }
     const prev = i => { usedPrev = true; return i < 0 || !prevV ? 0 : prevV[i] || 0; };
     const E = {
       src: (a, g, Vs, R) => { const gg = 1 / Math.max(0.01, R); G2(a, g, gg); if (a >= 0) b[a] += Vs * gg; if (g >= 0) b[g] -= Vs * gg; },
@@ -149,7 +114,7 @@ function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
       else if (on && vd < d.vf) { diodeOn.set(d.id, false); changed = true; }
       dI.set(d.id, on ? Math.max(0, (vd - d.vf) / d.ron) : 0);
     }
-    const pinI = []; for (let p = 0; p < 20; p++) if (pinV[p] !== undefined) pinI[p] = (pinV[p] - v(node('B:' + pinName(p)))) / 25;
+    const pinI = []; for (let p = 0; p < NP; p++) if (pinV[p] !== undefined) pinI[p] = (pinV[p] - v(node('B:' + pinName(p)))) / 25;
     res = { V, gReal, dI, pinI, i5V: (5 - v(node('B:5V'))) / 0.05, i3V: (3.3 - v(node('B:3V3'))) / 0.5, v, ver: circuit.ver };
     let moved = false;
     if (usedPrev) { if (!prevV) moved = true; else for (let i = 0; i < n; i++) if (Math.abs(V[i] - prevV[i]) > 1e-3) { moved = true; break; } }
@@ -175,7 +140,7 @@ const isFloating = (sol, key) => { const n = circuit.node(key); return n >= 0 &&
 
 /* ======================= Emulador y dispositivos ======================= */
 let uno = null, running = false, hexLoaded = null, lastFrame = 0, speed = 1;
-const track = Array.from({ length: 20 }, () => ({ high: 0, edge: 0, toggles: 0 }));
+const track = Array.from({ length: MAXP }, () => ({ high: 0, edge: 0, toggles: 0 }));
 let frameStart = 0;
 const devices = { servos: [], lcds: [], buzzers: [], i2c: [], sim: [] };
 const simDevs = new Map(); // id de componente -> modelo de dispositivo (modules.js)
@@ -185,7 +150,7 @@ let bounceQueue = [];
 
 function pinOfTerm(key){ // pin del Arduino unido a ese terminal (o -1)
   const n = circuit.node(key); if (n < 0) return -1;
-  for (let p = 0; p < 20; p++) if (circuit.node('B:' + pinName(p)) === n) return p;
+  for (let p = 0; p < NP; p++) if (circuit.node('B:' + pinName(p)) === n) return p;
   return -1;
 }
 function mapDevices(){
@@ -202,7 +167,7 @@ function mapDevices(){
     if (c.type === 'oled') {
       if (!c._oled) c._oled = new SSD1306(c.props.address);
       const m = c._oled; m.address = c.props.address;
-      m.ready = () => circuit.node(T('SDA')) === circuit.node('B:A4') && circuit.node(T('SCL')) === circuit.node('B:A5') && devApi(c).powered('VCC', 'GND', 2.8);
+      m.ready = () => circuit.node(T('SDA')) === circuit.node('B:' + BRD.i2c.sda) && circuit.node(T('SCL')) === circuit.node('B:' + BRD.i2c.scl) && devApi(c).powered('VCC', 'GND', 2.8);
       devices.i2c.push({ c, bp: m });
     }
     if (c.type === 'servo') devices.servos.push({ c, sig: pinOfTerm(T('sig')), rise: 0 });
@@ -214,7 +179,7 @@ function mapDevices(){
       const lcd = lcdModels.get(c.id);
       dev = { c, lcd, bp: (c._bp && c._bp.lcd === lcd) ? c._bp : new PCF8574Lcd(lcd, c.props.address) };
       c._bp = dev.bp; dev.bp.address = c.props.address;
-      dev.bp.ready = () => circuit.node(T('SDA')) === circuit.node('B:A4') && circuit.node(T('SCL')) === circuit.node('B:A5') && powered(c);
+      dev.bp.ready = () => circuit.node(T('SDA')) === circuit.node('B:' + BRD.i2c.sda) && circuit.node(T('SCL')) === circuit.node('B:' + BRD.i2c.scl) && powered(c);
       devices.i2c.push(dev);
     }
   }
@@ -234,7 +199,8 @@ function devApi(c){
     schedule: (at, fn) => { if (uno) uno.schedule(at, fn); },
     drive: () => { elecDirty = true; dispDirty = true; if (uno && running) applyInputs(uno.cycles); },
     running: () => running && !!uno,
-    serialWrite: bytes => { if (uno) { uno.serialWrite(bytes); rxFlash = performance.now(); } },
+    serialWrite: (bytes, n = 0) => { if (uno) { uno.serialWrite(bytes, n); if (!n) rxFlash = performance.now(); } },
+    board: () => BRD,
     click: () => playClick(),
   };
   apiCache.set(c, a); return a;
@@ -255,7 +221,7 @@ function onPin(p, s, old, cyc){
   const pin = io.pins[p];
   pin.mode = s === PinState.High || s === PinState.Low ? 'OUTPUT' : s === PinState.InputPullUp ? 'INPUT_PULLUP' : 'INPUT';
   pin.val = s === PinState.High ? 1 : 0;
-  elecDirty = true;
+  elecDirty = true; dispDirty = true;
   for (const d of devices.servos) if (d.sig === p) {
     if (s === PinState.High) d.rise = cyc;
     else if (old === PinState.High && d.rise) { const us = (cyc - d.rise) / 16; if (us > 400 && us < 2700 && powered(d.c)) servoAngles.set(d.c.id, clamp((us - 544) / (2400 - 544) * 180, 0, 180)); }
@@ -275,11 +241,18 @@ function applyInputs(cyc){
   if (bounceQueue.length) {
     const due = bounceQueue.filter(e => e.at <= cyc); if (due.length) { bounceQueue = bounceQueue.filter(e => e.at > cyc); for (const e of due) { e.c.props.contact = e.v; } elecDirty = true; }
   }
+  // TX de un puerto serie por hardware activo (TXEN): el pin queda como salida en reposo alto
+  BRD.uarts.forEach((u, i) => {
+    const us = uno.usarts[i]; if (!us) return;
+    const on = !!(uno.cpu.data[us.config.UCSRB] & 0x08), pin = io.pins[u.tx];
+    if (on && pin.mode !== 'OUTPUT') { pin.mode = 'OUTPUT'; pin.val = 1; pin.uart = true; elecDirty = true; dispDirty = true; }
+    else if (!on && pin.uart) { pin.uart = false; pin.mode = 'INPUT'; pin.val = 0; elecDirty = true; dispDirty = true; }
+  });
   if (!elecDirty) return;
   elecDirty = false;
   const sol = solve({ pwm: 'inst' }); lastSol = sol;
   for (const d of devices.sim) if (d.update && d.update(t => voltage(sol, `C${d.c.id}:${t}`))) { elecDirty = true; dispDirty = true; }
-  for (let p = 0; p < 20; p++) {
+  for (let p = 0; p < NP; p++) {
     const key = 'B:' + pinName(p); const v = voltage(sol, key);
     if (io.pins[p].mode === 'OUTPUT') floatWarn.delete(p);
     else {
@@ -288,7 +261,7 @@ function applyInputs(cyc){
       else floatWarn.delete(p);
       uno.setInput(p, hi);
     }
-    if (p >= 14) uno.setAnalog(p, isFloating(sol, key) ? 1.5 + Math.random() * 2 : clamp(v, 0, 5));
+    if (BRD.analog[p] !== undefined) uno.setAnalog(p, isFloating(sol, key) ? 1.5 + Math.random() * 2 : clamp(v, 0, 5));
   }
 }
 
@@ -298,15 +271,15 @@ let serialBuf = '', txFlash = 0, rxFlash = 0;
 function startSim(hex){
   hex = hex || hexLoaded; if (!hex) return;
   hexLoaded = hex;
-  uno = new Uno(hex);
+  uno = new Board(hex, BRD);
   uno.bus = new I2CBus(uno.twi);
   for (const m of lcdModels.values()) m.reset();
   for (const c of state.comps) if (c.type === 'servo') servoAngles.set(c.id, 90);
-  io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; });
+  io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; p.uart = false; });
   track.forEach(t => { t.high = 0; t.edge = 0; t.toggles = 0; });
   mapDevices();
   uno.pinListeners.push(onPin);
-  const dec = new TextDecoder(); uno.onSerial = b => { serialBuf += dec.decode(new Uint8Array([b]), { stream: true }); txFlash = performance.now(); for (const d of devices.sim) if (d.hwRx && d.hwRx()) d.rx(b); };
+  const dec = new TextDecoder(); uno.onSerial = (b, n) => { if (!n) { serialBuf += dec.decode(new Uint8Array([b]), { stream: true }); txFlash = performance.now(); } for (const d of devices.sim) if (d.hwRx && d.hwRx() === n) d.rx(b); };
   uno.onSpi = b => { for (const d of devices.sim) if (d.onSpi) d.onSpi(b); return 0xFF; };
   for (const d of simDevs.values()) if (d.reset) d.reset();
   for (const c of state.comps) if (c._oled) c._oled.reset();
@@ -314,7 +287,7 @@ function startSim(hex){
   lastFrame = performance.now();
   setStatus('run');
 }
-function stopSim(){ running = false; uno = null; for (const d of simDevs.values()) if (d.reset) d.reset(); io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; }); elecDirty = true; setStatus('stop'); stopTone(); }
+function stopSim(){ running = false; uno = null; for (const d of simDevs.values()) if (d.reset) d.reset(); io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; p.uart = false; }); elecDirty = true; setStatus('stop'); stopTone(); }
 function setStatus(s, extra){
   const st = $('#status'), run = $('#run');
   st.className = 'chip' + (s === 'run' ? ' on' : s === 'error' ? ' bad' : s === 'busy' ? ' busy' : '');
@@ -337,7 +310,7 @@ function frame(now){
     if (uno.cycles < target - 1000) speed = Math.max(0.05, speed * 0.9); else if (spent < 12 && speed < 1) speed = Math.min(1, speed * 1.05);
     // ciclo de trabajo (PWM) de cada pin en este cuadro
     const cyc = uno.cycles, span = cyc - frameStart;
-    if (span > 0) for (let p = 0; p < 20; p++) {
+    if (span > 0) for (let p = 0; p < NP; p++) {
       const t = track[p]; const pin = io.pins[p];
       if (uno.state[p] === PinState.High) t.high += cyc - t.edge;
       t.edge = cyc;
@@ -360,7 +333,7 @@ function frame(now){
 let dispDirty = true, display = null, lastWarnHTML = '';
 function computeDisplay(){
   if (circuit.ver !== structVer) rebuildCircuit();
-  const pwmPins = []; for (let p = 0; p < 20; p++) if (io.pins[p].mode === 'OUTPUT' && io.pins[p].duty != null) pwmPins.push(p);
+  const pwmPins = []; for (let p = 0; p < NP; p++) if (io.pins[p].mode === 'OUTPUT' && io.pins[p].duty != null) pwmPins.push(p);
   let avg = solve({ pwm: 'avg' });
   if (!running) {
     lastSol = avg;
@@ -422,7 +395,7 @@ function renderDynamic(){
   const buzz = state.comps.find(c => c.type === 'buzzer' && c._freq);
   if (buzz) playTone(buzz._freq); else stopTone();
   const pinI = D.pinI || [];
-  for (let p = 0; p < 20; p++) if (pinI[p] !== undefined && Math.abs(pinI[p]) > 0.04) warns.push(`${pinName(p)}: el pin entrega ${fmt(Math.abs(pinI[p]) * 1000, 0)} mA y el máximo del ATmega328P es 40 mA. Revisa si hay un corto o falta una resistencia.`);
+  for (let p = 0; p < NP; p++) if (pinI[p] !== undefined && Math.abs(pinI[p]) > 0.04) warns.push(`${pinName(p)}: el pin entrega ${fmt(Math.abs(pinI[p]) * 1000, 0)} mA y el máximo del ${BRD.chipName} es 40 mA. Revisa si hay un corto o falta una resistencia.`);
   if (D.sol && D.sol.i5V > 0.5) warns.push('Cortocircuito: 5V está unido directamente a GND.');
   if (D.sol && D.sol.i3V > 0.15) warns.push('Cortocircuito: 3,3 V está unido a GND o muy cargado.');
   if (running) for (const p of floatWarn) warns.push(`${pinName(p)}: la entrada queda flotante (sin nada que la fije a 5V o a GND) y lee valores al azar. Usa INPUT_PULLUP o una resistencia pull-down.`);
@@ -434,7 +407,7 @@ function renderDynamic(){
   $('#bL').setAttribute('fill', lOn > 0.02 ? `rgba(255,190,40,${0.35 + 0.65 * lOn})` : '#4a3d1a');
   $('#bTX').setAttribute('fill', now - txFlash < 60 ? '#ffbe28' : '#4a3d1a');
   $('#bRX').setAttribute('fill', now - rxFlash < 120 ? '#ffbe28' : '#4a3d1a');
-  for (let p = 0; p < 20; p++) {
+  for (let p = 0; p < NP; p++) {
     const el = q(`[data-pinled="${pinName(p)}"]`); if (!el) continue;
     const s = io.pins[p]; const lvl = running && s.mode === 'OUTPUT' ? (s.duty != null ? s.duty : s.val) : 0;
     el.setAttribute('fill', lvl > 0.02 ? `rgba(255,120,40,${0.3 + 0.7 * lvl})` : '#0c0c0c');
@@ -454,7 +427,7 @@ function renderOled(c, warns, now){
   const pw = running && devApi(c).powered('VCC', 'GND', 2.8);
   const key = m.version + '|' + pw;
   if (img.dataset.key !== key && (!c._oledT || now - c._oledT > 40)) { img.dataset.key = key; c._oledT = now; img.setAttribute('href', oledImage(m, pw)); }
-  if (running && !(m.ready && m.ready())) warns.push(`${c.name}: la pantalla OLED debe ir con SDA a A4, SCL a A5, VCC a 5V y GND a GND.`);
+  if (running && !(m.ready && m.ready())) warns.push(`${c.name}: la pantalla OLED debe ir con SDA a ${BRD.i2c.sda}, SCL a ${BRD.i2c.scl}, VCC a 5V y GND a GND.`);
 }
 function renderMatrix(c, warns){
   const m = c._max; if (!m) return;
@@ -473,7 +446,7 @@ function renderLcd(c, sol, warns){
     const v0 = voltage(sol, `C${c.id}:V0`) - voltage(sol, `C${c.id}:VSS`);
     contrast = isFloating(sol, `C${c.id}:V0`) ? 0.15 : clamp(1.15 - v0 / 3, 0, 1);
     if (running && on && isFloating(sol, `C${c.id}:V0`)) warns.push(`${c.name}: V0 (contraste) no está conectado y el texto casi no se ve. Únelo a GND o al cursor de un potenciómetro.`);
-  } else { light = on && c._bp && c._bp.backlight; if (running && !(c._bp && c._bp.ready())) warns.push(`${c.name}: el módulo I2C debe ir con SDA a A4, SCL a A5, VCC a 5V y GND a GND.`); }
+  } else { light = on && c._bp && c._bp.backlight; if (running && !(c._bp && c._bp.ready())) warns.push(`${c.name}: el módulo I2C debe ir con SDA a ${BRD.i2c.sda}, SCL a ${BRD.i2c.scl}, VCC a 5V y GND a GND.`); }
   if (running && !on) warns.push(`${c.name}: la pantalla no tiene alimentación (${c.type === 'lcd' ? 'VDD a 5V y VSS a GND' : 'VCC a 5V y GND a GND'}).`);
   const blinkOn = Math.floor(performance.now() / 400) % 2 === 0;
   const key = [lcd.version, on, light, contrast.toFixed(2), lcd.displayOn, lcd.cursor && blinkOn, lcd.blink && blinkOn].join('|');
@@ -623,8 +596,8 @@ function ctrlText(k, v){ return k.pct ? Math.round(v * 100) + ' %' : (Number.isI
 const svg = $('#svg');
 function svgPt(e){ const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY; const m = svg.getScreenCTM(); return m ? p.matrixTransform(m.inverse()) : { x: 0, y: 0 }; }
 const snap = v => Math.round(v / 10) * 10;
-function setHint(){
-  $('#hint').textContent = drawing ? `Cable desde ${termLabel(drawing.from)}: clic en otro terminal para terminar, clic en vacío añade un codo, Esc cancela.`
+function setHint(msg){
+  $('#hint').textContent = msg ? msg : drawing ? `Cable desde ${termLabel(drawing.from)}: clic en otro terminal para terminar, clic en vacío añade un codo, Esc cancela.`
     : sel && sel.kind === 'comp' ? 'Arrastra para mover. R gira, Supr elimina.' : 'Clic en un terminal para empezar un cable. Arrastra los componentes para moverlos.';
 }
 function select(s){ sel = s; renderComps(); updateProps(true); setHint(); }
@@ -679,7 +652,7 @@ svg.addEventListener('pointermove', e => {
   if (drawing) { drawing.cur = pt; renderWires(); }
   if (!drag) return;
   if (drag.kind === 'move') {
-    const nx = clamp(snap(pt.x - drag.ox), 20, 1080), ny = clamp(snap(pt.y - drag.oy), 20, 680);
+    const nx = clamp(snap(pt.x - drag.ox), 20, BRD.canvasW - 20), ny = clamp(snap(pt.y - drag.oy), 20, 680);
     if (nx !== drag.c.x || ny !== drag.c.y) { drag.c.x = nx; drag.c.y = ny; drag.moved = true; q(`[data-comp="${drag.c.id}"]`).setAttribute('transform', `translate(${nx},${ny}) rotate(${drag.c.rot})`); renderTerms(); renderWires(); }
   } else if (drag.kind === 'joy') {
     const c = drag.c; let [lx, ly] = rot(pt.x - c.x, pt.y - c.y, -c.rot); lx += 4;
@@ -755,8 +728,9 @@ $('#stage').addEventListener('dragover', e => { e.preventDefault(); e.dataTransf
 $('#stage').addEventListener('drop', e => { e.preventDefault(); const t = e.dataTransfer.getData('text/plain'); if (TYPES[t]) { const p = svgPt(e); addComp(t, snap(p.x), snap(p.y)); } });
 function addComp(type, x, y){
   if (x === undefined) {
-    const spots = [[720, 110], [860, 110], [1000, 110], [720, 300], [880, 300], [1000, 300], [720, 470], [880, 470], [1000, 470], [660, 620], [840, 620]];
-    const free = spots.find(([sx, sy]) => !state.comps.some(c => Math.abs(c.x - sx) < 80 && Math.abs(c.y - sy) < 80)) || [640 + Math.random() * 380 | 0, 80 + Math.random() * 500 | 0];
+    const ox = BRD.canvasW - 1100;
+    const spots = [[720, 110], [860, 110], [1000, 110], [720, 300], [880, 300], [1000, 300], [720, 470], [880, 470], [1000, 470], [660, 620], [840, 620]].map(([sx, sy]) => [sx + ox, sy]);
+    const free = spots.find(([sx, sy]) => !state.comps.some(c => Math.abs(c.x - sx) < 80 && Math.abs(c.y - sy) < 80)) || [640 + ox + Math.random() * 380 | 0, 80 + Math.random() * 500 | 0];
     [x, y] = free.map(snap);
   }
   state.counters[type] = (state.counters[type] || 0) + 1;
@@ -805,7 +779,7 @@ async function compileAndRun(fromLive){
   const libs = (await listLibraries()).filter(l => l.enabled).map(l => ({ name: l.name, files: l.files }));
   let res;
   try {
-    const r = await fetch('api/compile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sketch: code, libraries: libs }) });
+    const r = await fetch('api/compile', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sketch: code, libraries: libs, board: BRD.id }) });
     res = await r.json();
   } catch (e) { res = { ok: false, diagnostics: [{ line: 0, type: 'error', message: String(e), es: 'No se pudo contactar con el servidor de compilación.' }] }; }
   if (seq !== compileSeq) return;
@@ -904,20 +878,29 @@ $('#myLibs').addEventListener('change', async e => {
 const SAVE_KEY = 'banco-uno-v2'; let saveTimer = 0;
 function scheduleSave(){ clearTimeout(saveTimer); saveTimer = setTimeout(() => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(state, (k, v) => k.startsWith('_') ? undefined : v)); } catch {} }, 400); }
 function loadState(){ try { const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); if (s && Array.isArray(s.comps) && typeof s.code === 'string') return s; } catch {} return null; }
-function exampleState(name){ const ex = EXAMPLES[name]; const c = ex.build(); return { code: ex.code, comps: c.comps, wires: c.wires, counters: c.counters, nextId: 100 }; }
+function exampleState(name){ const ex = EXAMPLES[name]; const c = ex.build(); return { board: ex.board || 'uno', code: ex.code, comps: c.comps, wires: c.wires, counters: c.counters, nextId: 100 }; }
 function applyState(s, run = true){
   stopSim(); lcdModels.clear(); servoAngles.clear(); bounceQueue = [];
-  state = s; for (const c of state.comps) if (c.type === 'btn') c.props.contact = c.props.pressed = false;
+  state = s; if (!BOARDS[state.board]) state.board = 'uno'; setBoard(state.board);
+  state.wires = state.wires.filter(w => [w.a, w.b].every(k => !k.startsWith('B:') || BPIN[k.slice(2)]));
+  for (const c of state.comps) if (c.type === 'btn') c.props.contact = c.props.pressed = false;
   sel = null; drawing = null; setCode(state.code); structChanged(); renderComps(); updateProps(true); setHint();
   serialEl.textContent = ''; $('#err').hidden = true; $('#buildInfo').hidden = true;
   if (run) compileAndRun();
 }
 const exSel = $('#example');
 exSel.innerHTML = '<option value="">Cargar ejemplo…</option>' + Object.entries(EXAMPLES).map(([k, v]) => `<option value="${k}">${v.title}</option>`).join('');
+$('#boardSel').innerHTML = Object.values(BOARDS).map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+$('#boardSel').addEventListener('change', e => {
+  const id = e.target.value; if (id === state.board) return;
+  const lost = state.wires.filter(w => [w.a, w.b].some(k => k.startsWith('B:') && !BOARDS[id].terms[k.slice(2)])).length;
+  applyState({ ...state, board: id });
+  if (lost) setHint(`Se quitaron ${lost} cable${lost > 1 ? 's' : ''} conectado${lost > 1 ? 's' : ''} a pines que el ${BOARDS[id].name} no tiene.`);
+});
 exSel.addEventListener('change', e => { if (e.target.value) { applyState(exampleState(e.target.value)); e.target.value = ''; } });
 
 /* ======================= Arranque ======================= */
-drawBoard(); renderLibrary();
+renderLibrary();
 applyState(loadState() || exampleState('completo'));
 requestAnimationFrame(t => { lastFrame = t; requestAnimationFrame(frame); });
 window.__banco = { get state(){ return state; }, simDevs, refresh: () => { elecDirty = true; dispDirty = true; }, btSend: t => { const d = btDev(); return d ? d.send(t) : false; }, get uno(){ return uno; }, io, lcdModels, servoAngles, compileAndRun, applyState, exampleState, get display(){ return display; }, setPressed, listLibraries, saveLibrary };
