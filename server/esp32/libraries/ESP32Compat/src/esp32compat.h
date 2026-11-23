@@ -74,9 +74,13 @@ public:
   uint32_t getMaxAllocHeap() { return getFreeHeap(); }
   uint32_t getFreePsram() { return 0; }
   uint32_t getPsramSize() { return 0; }
-  const char *getChipModel() { return "ESP32-D0WD-V3"; }
+  const char *getChipModel() { return BANCO_CHIP_MODEL; }
   uint8_t getChipRevision() { return 3; }
+#ifdef CONFIG_IDF_TARGET_ESP32C3
+  uint8_t getChipCores() { return 1; }
+#else
   uint8_t getChipCores() { return 2; }
+#endif
   uint32_t getCpuFreqMHz() { return 240; }
   uint32_t getFlashChipSize() { return 4194304; }
   uint32_t getFlashChipSpeed() { return 40000000; }
@@ -165,4 +169,6 @@ inline void vTaskDelete(TaskHandle_t) {}
 /* ---------- red simulada (canal interno con el simulador) ---------- */
 void esp32_net_begin();
 void esp32_net_event(const char *type, const char *data);
+void neopixelWrite(uint8_t pin, uint8_t r, uint8_t g, uint8_t b);
+void rgbLedWrite(uint8_t pin, uint8_t r, uint8_t g, uint8_t b);
 #endif

@@ -92,7 +92,7 @@ function solve(mode){ // mode: {pwm:'avg'|'low'|'inst', high:Set}
       else SRC(i, 0, 1e8, false);
     }
     for (const [id, V, R] of BRD.supplies) SRC(node('B:' + id), V, R);
-    if (bootPressed && BRD.esp32) SRC(node('B:D0'), 0, 100); // botón BOOT del ESP32
+    if (bootPressed && BRD.esp32) SRC(node('B:D' + (BRD.bootPin ?? 0)), 0, 100); // botón BOOT del ESP32
     const diodes = [];
     const driven = new Map(); for (let p = 0; p < NP; p++) if (pinV[p] !== undefined) { const i = node('B:' + pinName(p)); if (i >= 0 && !driven.has(i)) driven.set(i, pinV[p] / (BRD.vio || 5)); else if (i === -1) driven.set(-1, 0); }
     const prev = i => { usedPrev = true; return i < 0 || !prevV ? 0 : prevV[i] || 0; };
@@ -288,7 +288,7 @@ function startSim(hex){
   uno.pinListeners.push(onPin);
   esp = BRD.esp32 ? new Esp32Link((bytes, n) => uno && uno.serialWrite(bytes, n)) : null; webShown = false; $('#webView').srcdoc = ''; updateWebPanel();
   if (esp) esp.onServer = () => webGo('/');
-  const dec = new TextDecoder(); uno.onSerial = (b, n) => { if (esp && n) esp.onByte(n, b); if (!n) { serialBuf += dec.decode(new Uint8Array([b]), { stream: true }); txFlash = performance.now(); } for (const d of devices.sim) if (d.hwRx && d.hwRx() === n) d.rx(b); };
+  const dec = new TextDecoder(); uno.onSerial = (b, n) => { if (esp && (n === 3 || (n && n === BRD.btUart))) esp.onByte(n, b); if (!n) { serialBuf += dec.decode(new Uint8Array([b]), { stream: true }); txFlash = performance.now(); } for (const d of devices.sim) if (d.hwRx && d.hwRx() === n) d.rx(b); };
   uno.onSpi = b => { let r = 0xFF; for (const d of devices.sim) if (d.onSpi) { const v = d.onSpi(b); if (typeof v === 'number') r &= v; } return r; };
   for (const d of simDevs.values()) if (d.reset) d.reset();
   for (const c of state.comps) if (c._oled) c._oled.reset();
@@ -418,6 +418,11 @@ function renderDynamic(){
   let lOn = outLvl(BRD.ledPin ?? 13); lOn = lOn == null ? 0 : BRD.ledActiveLow ? 1 - lOn : lOn;
   const [lr, lg, lb] = BRD.ledColor || [255, 190, 40];
   $('#bL').setAttribute('fill', lOn > 0.02 ? `rgba(${lr},${lg},${lb},${0.35 + 0.65 * lOn})` : BRD.ledOff || '#4a3d1a');
+  if (BRD.rgbPin != null) { // LED RGB WS2812 de la placa (S3, C3)
+    const c = running && esp && esp.rgb ? esp.rgb : [0, 0, 0], m = Math.max(...c), el = $('#bRGB');
+    if (m < 1) { el.setAttribute('fill', '#e8e8e4'); el.setAttribute('filter', 'none'); }
+    else { const k = 255 / m; el.setAttribute('fill', `rgb(${c.map(v => Math.round(v * k)).join(',')})`); el.setAttribute('opacity', String(Math.min(1, 0.45 + m / 80))); el.setAttribute('filter', 'url(#glowS)'); }
+  }
   if (BRD.flashPin != null) { const f = outLvl(BRD.flashPin) || 0; const el = $('#bF'); el.setAttribute('fill', f > 0.02 ? `rgba(255,255,235,${0.5 + 0.5 * f})` : '#d8d2b0'); el.setAttribute('filter', f > 0.02 ? 'url(#glowS)' : 'none'); }
   $('#bTX').setAttribute('fill', now - txFlash < 60 ? '#ffbe28' : '#4a3d1a');
   $('#bRX').setAttribute('fill', now - rxFlash < 120 ? '#ffbe28' : '#4a3d1a');

@@ -39,22 +39,22 @@ static void writeDuty(uint8_t pin, uint32_t duty, uint8_t bits) {
 void esp32_analogWrite(uint8_t pin, int value) { writeDuty(pin, value < 0 ? 0 : value, pwmBits); }
 struct LedcCh { int8_t pin; uint8_t bits; uint32_t freq, duty; };
 static LedcCh ch[16];
-static int8_t pinCh[40];
+static int8_t pinCh[NUM_DIGITAL_PINS];
 static bool ledcInit = false;
-static void ledcBoot() { if (ledcInit) return; ledcInit = true; for (int i = 0; i < 16; i++) { ch[i].pin = -1; ch[i].bits = 8; ch[i].freq = 5000; ch[i].duty = 0; } for (int i = 0; i < 40; i++) pinCh[i] = -1; }
+static void ledcBoot() { if (ledcInit) return; ledcInit = true; for (int i = 0; i < 16; i++) { ch[i].pin = -1; ch[i].bits = 8; ch[i].freq = 5000; ch[i].duty = 0; } for (int i = 0; i < NUM_DIGITAL_PINS; i++) pinCh[i] = -1; }
 uint32_t ledcSetup(uint8_t c, uint32_t freq, uint8_t res) { ledcBoot(); if (c >= 16) return 0; ch[c].freq = freq; ch[c].bits = res ? res : 8; return freq; }
-void ledcAttachPin(uint8_t pin, uint8_t c) { ledcBoot(); if (c >= 16 || pin >= 40) return; ch[c].pin = pin; pinCh[pin] = c; writeDuty(pin, ch[c].duty, ch[c].bits); }
-void ledcDetachPin(uint8_t pin) { ledcBoot(); if (pin < 40 && pinCh[pin] >= 0) { ch[pinCh[pin]].pin = -1; pinCh[pin] = -1; } digitalWrite(pin, LOW); }
+void ledcAttachPin(uint8_t pin, uint8_t c) { ledcBoot(); if (c >= 16 || pin >= NUM_DIGITAL_PINS) return; ch[c].pin = pin; pinCh[pin] = c; writeDuty(pin, ch[c].duty, ch[c].bits); }
+void ledcDetachPin(uint8_t pin) { ledcBoot(); if (pin < NUM_DIGITAL_PINS && pinCh[pin] >= 0) { ch[pinCh[pin]].pin = -1; pinCh[pin] = -1; } digitalWrite(pin, LOW); }
 bool ledcAttachChannel(uint8_t pin, uint32_t freq, uint8_t res, uint8_t c) { ledcSetup(c, freq, res); ledcAttachPin(pin, c); return true; }
 bool ledcAttach(uint8_t pin, uint32_t freq, uint8_t res) {
-  ledcBoot(); if (pin >= 40) return false;
+  ledcBoot(); if (pin >= NUM_DIGITAL_PINS) return false;
   if (pinCh[pin] >= 0) return ledcAttachChannel(pin, freq, res, pinCh[pin]);
   for (uint8_t c = 0; c < 16; c++) if (ch[c].pin < 0) return ledcAttachChannel(pin, freq, res, c);
   return false;
 }
 bool ledcDetach(uint8_t pin) { ledcDetachPin(pin); return true; }
 // API 2.x: ledcWrite(canal, ciclo). API 3.x: ledcWrite(pin, ciclo). Se distingue por lo que se haya asociado.
-static int8_t resolve(uint8_t x) { ledcBoot(); if (x < 40 && pinCh[x] >= 0) return pinCh[x]; if (x < 16 && ch[x].pin >= 0) return x; return -1; }
+static int8_t resolve(uint8_t x) { ledcBoot(); if (x < NUM_DIGITAL_PINS && pinCh[x] >= 0) return pinCh[x]; if (x < 16 && ch[x].pin >= 0) return x; return -1; }
 bool ledcWrite(uint8_t x, uint32_t duty) {
   int8_t c = resolve(x);
   if (c < 0) { if (x < 16) { ch[x].duty = duty; return true; } return false; }
@@ -77,7 +77,7 @@ const void *esp32_ram_buf = 0;
 
 /* ---------- interrupciones: INT0/1/4/5 por hardware y cambio de pin (PCINT) en el resto ---------- */
 struct Isr { void (*f)(void); void (*fa)(void *); void *arg; uint8_t mode; };
-static Isr isr[40];
+static Isr isr[NUM_DIGITAL_PINS];
 static uint8_t lastB, lastK;
 static void callIsr(uint8_t g, bool level) {
   Isr &i = isr[g]; if (!i.f && !i.fa) return;
@@ -87,7 +87,7 @@ static void callIsr(uint8_t g, bool level) {
 static void scanPort(volatile uint8_t &pinReg, uint8_t &last, uint8_t mask, char port) {
   uint8_t now = pinReg, diff = (now ^ last) & mask; last = now;
   if (!diff) return;
-  for (uint8_t g = 0; g < 40; g++) {
+  for (uint8_t g = 0; g < NUM_DIGITAL_PINS; g++) {
     if (digitalPinToPCMSK(g) == 0) continue;
     if ((digitalPinToPCICRbit(g) == 0) != (port == 'B')) continue;
     uint8_t bit = 1 << digitalPinToPCMSKbit(g);
@@ -97,16 +97,18 @@ static void scanPort(volatile uint8_t &pinReg, uint8_t &last, uint8_t mask, char
 ISR(PCINT0_vect) { scanPort(PINB, lastB, PCMSK0, 'B'); }
 ISR(PCINT2_vect) { scanPort(PINK, lastK, PCMSK2, 'K'); }
 static void trampoline(uint8_t g) { Isr &i = isr[g]; if (i.fa) i.fa(i.arg); else if (i.f) i.f(); }
-static void ext4() { trampoline(4); }
-static void ext15() { trampoline(15); }
-static void ext22() { trampoline(22); }
-static void ext21() { trampoline(21); }
+static const uint8_t EXT[4] = BANCO_EXT_PINS; // GPIO con interrupción externa (attachInterrupt 0..3 del núcleo AVR)
+static void ext0() { trampoline(EXT[0]); }
+static void ext1() { trampoline(EXT[1]); }
+static void ext2() { trampoline(EXT[2]); }
+static void ext3() { trampoline(EXT[3]); }
 static void attachAny(uint8_t pin, int mode) {
-  if (pin >= 40) return;
+  if (pin >= NUM_DIGITAL_PINS) return;
   isr[pin].mode = mode;
-  int n = (pin == 4) ? 0 : (pin == 15) ? 1 : (pin == 22) ? 2 : (pin == 21) ? 3 : -1;
+  int n = -1; for (int i = 0; i < 4; i++) if (EXT[i] == pin) n = i;
   int m = mode == ONLOW ? LOW : mode == ONHIGH ? CHANGE : mode;
-  if (n >= 0) { attachInterrupt(n, pin == 4 ? ext4 : pin == 15 ? ext15 : pin == 22 ? ext22 : ext21, m); return; }
+  static void (*const tr[4])() = { ext0, ext1, ext2, ext3 };
+  if (n >= 0) { attachInterrupt(n, tr[n], m); return; }
   volatile uint8_t *msk = digitalPinToPCMSK(pin);
   if (!msk) { esp32_net_event("I", String(pin).c_str()); return; } // pin sin interrupción en la simulación
   uint8_t oldSreg = SREG; cli();
@@ -115,11 +117,11 @@ static void attachAny(uint8_t pin, int mode) {
   PCICR |= 1 << digitalPinToPCICRbit(pin);
   SREG = oldSreg;
 }
-void esp32_attachInterrupt(uint8_t pin, void (*f)(void), int mode) { if (pin >= 40) return; isr[pin].f = f; isr[pin].fa = 0; attachAny(pin, mode); }
-void esp32_attachInterruptArg(uint8_t pin, void (*f)(void *), void *arg, int mode) { if (pin >= 40) return; isr[pin].fa = f; isr[pin].arg = arg; isr[pin].f = 0; attachAny(pin, mode); }
+void esp32_attachInterrupt(uint8_t pin, void (*f)(void), int mode) { if (pin >= NUM_DIGITAL_PINS) return; isr[pin].f = f; isr[pin].fa = 0; attachAny(pin, mode); }
+void esp32_attachInterruptArg(uint8_t pin, void (*f)(void *), void *arg, int mode) { if (pin >= NUM_DIGITAL_PINS) return; isr[pin].fa = f; isr[pin].arg = arg; isr[pin].f = 0; attachAny(pin, mode); }
 void esp32_detachInterrupt(uint8_t pin) {
-  if (pin >= 40) return;
-  int n = (pin == 4) ? 0 : (pin == 15) ? 1 : (pin == 22) ? 2 : (pin == 21) ? 3 : -1;
+  if (pin >= NUM_DIGITAL_PINS) return;
+  int n = -1; for (int i = 0; i < 4; i++) if (EXT[i] == pin) n = i;
   if (n >= 0) detachInterrupt(n);
   else { volatile uint8_t *msk = digitalPinToPCMSK(pin); if (msk) *msk &= ~(1 << digitalPinToPCMSKbit(pin)); }
   isr[pin].f = 0; isr[pin].fa = 0;
@@ -154,3 +156,22 @@ BaseType_t xTaskCreatePinnedToCore(void (*f)(void *), const char *name, uint32_t
 static bool netOn = false;
 void esp32_net_begin() { if (!netOn) { Serial3.begin(500000); netOn = true; } }
 void esp32_net_event(const char *type, const char *data) { esp32_net_begin(); Serial3.write(0x05); Serial3.print(type); Serial3.print(':'); Serial3.print(data); Serial3.write('\n'); Serial3.flush(); }
+
+/* ---------- LED RGB de la placa (WS2812 en S3 y C3) ---------- */
+// La simulación no decodifica el protocolo WS2812: el color se informa al panel por el canal interno.
+void neopixelWrite(uint8_t pin, uint8_t r, uint8_t g, uint8_t b) {
+#ifdef PIN_RGB_LED
+  if (pin == PIN_RGB_LED || pin == RGB_BUILTIN) {
+    char d[16]; snprintf(d, sizeof d, "%u,%u,%u", r, g, b); esp32_net_event("L", d); return;
+  }
+#endif
+  (void)r; (void)g; (void)b; esp32_net_event("N", String(pin).c_str());
+}
+void rgbLedWrite(uint8_t pin, uint8_t r, uint8_t g, uint8_t b) { neopixelWrite(pin, r, g, b); }
+extern "C" void esp32_rgb_builtin(uint8_t on) {
+#ifdef RGB_BRIGHTNESS
+  uint8_t v = on ? RGB_BRIGHTNESS : 0; neopixelWrite(RGB_BUILTIN, v, v, v);
+#else
+  (void)on;
+#endif
+}

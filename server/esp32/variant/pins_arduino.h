@@ -1,5 +1,5 @@
 // GENERADO por scripts/gen-esp32-variant.mjs: no editar a mano.
-// Variante «ESP32 DevKit (modo compatible)»: los números de pin son los GPIO del ESP32 y cada uno
+// Variante «ESP32 DevKit (modo compatible)»: los números de pin son los GPIO del chip y cada uno
 // corresponde a un pin del ATmega2560 emulado (ver web/src/esp32map.js).
 #ifndef Pins_Arduino_h
 #define Pins_Arduino_h
@@ -26,8 +26,11 @@ static const uint8_t SDA = PIN_WIRE_SDA;
 static const uint8_t SCL = PIN_WIRE_SCL;
 static const uint8_t TX = 1;
 static const uint8_t RX = 3;
+
 #define LED_BUILTIN 2
 #define BUILTIN_LED 2
+#define BANCO_EXT_PINS { 4, 15, 22, 21 }
+#define BANCO_CHIP_MODEL "ESP32-D0WD-V3"
 static const uint8_t A0 = 36;
 static const uint8_t A3 = 39;
 static const uint8_t A4 = 32;

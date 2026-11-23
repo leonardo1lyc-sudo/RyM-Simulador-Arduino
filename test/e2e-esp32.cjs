@@ -16,6 +16,8 @@ const OUT = process.env.SHOTS || '.';
   const shot = n => p.screenshot({ path: path.join(OUT, n + '.png') });
   let ok = true; const check = (c, msg) => { console.log((c ? 'OK   ' : 'FAIL ') + msg); if (!c) ok = false; };
   const frame = () => p.frameLocator('#webView');
+  const pressBoot = async (ms = 150) => { const xy = await p.evaluate(() => { const r = document.querySelector('[data-ctrl="boot"] rect').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }); await p.mouse.move(xy[0], xy[1]); await p.mouse.down(); await p.waitForTimeout(ms); await p.mouse.up(); await p.waitForTimeout(150); };
+  const rgb = () => p.evaluate(() => document.querySelector('#bRGB').getAttribute('fill'));
 
   // servidor web: conecta, muestra la página, el enlace prende el LED y fetch() lee el potenciómetro
   await ex('esp32web'); await waitSerial('IP: 192\\.168\\.1\\.50');
@@ -66,6 +68,24 @@ const OUT = process.env.SHOTS || '.';
   const warnTxt = await p.evaluate(() => document.querySelector('#warnings').textContent);
   check(!/Cortocircuito/.test(warnTxt), 'Sin avisos falsos en la ESP32-CAM: ' + JSON.stringify(warnTxt.slice(0, 120)));
   await shot('esp32cam');
+  // ESP32-S3: otra numeración (GPIO48 RGB, GPIO1 ADC, BOOT en GPIO0 por PCINT)
+  await ex('esp32s3rgb'); await waitSerial('Color rojo');
+  const s3a = await rgb();
+  await p.evaluate(() => { const c = __banco.state.comps.find(c => c.type === 'pot'); c.props.pos = 1; __banco.refresh(); });
+  await pressBoot(); await waitSerial('Color verde, brillo 25[45]', 5000);
+  const s3s = await serial(), s3b = await rgb();
+  check(/Chip: ESP32-S3/.test(s3s) && /rgb\(255,0,0\)/.test(s3a) && /rgb\(0,255,0\)/.test(s3b) && /Color verde, brillo 25[45] \(pot 40[89]\d\)/.test(s3s),
+    `ESP32-S3: LED RGB ${s3a} → ${s3b}, BOOT y ADC en GPIO1: ` + JSON.stringify(s3s.trim().split('\n').pop()));
+  await shot('esp32s3');
+
+  // ESP32-C3: LEDC en GPIO2, RGB con digitalWrite(RGB_BUILTIN), BOOT en GPIO9 (INT0)
+  await ex('esp32c3'); await p.waitForTimeout(600);
+  const cd = []; const cw = new Set(); for (let i = 0; i < 10; i++) { cd.push(await p.evaluate(() => __banco.io.pins[2].duty)); cw.add(await rgb()); await p.waitForTimeout(90); }
+  await pressBoot(); await pressBoot(); await waitSerial('BOOT pulsado [12] veces', 6000);
+  const c3s = await serial();
+  check(/ESP32-C3 con 1 núcleo/.test(c3s) && cd.filter(d => d != null && d > 0.05 && d < 0.95).length >= 3 && [...cw].some(c => /rgb\(255,255,255\)/.test(c)) && /BOOT pulsado [12] veces/.test(c3s),
+    `ESP32-C3: LEDC ${cd.map(d => d == null ? '-' : d.toFixed(2)).join(' ')}, RGB ${[...cw].join(' / ')}, ` + JSON.stringify(c3s.trim().split('\n').pop()));
+  await shot('esp32c3');
   console.log('errores de página:', errs);
   await b.close(); process.exit(ok && !errs.length ? 0 : 1);
 })();

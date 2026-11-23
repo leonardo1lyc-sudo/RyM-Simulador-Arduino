@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const SRC = path.join(ROOT, 'vendor/ArduinoCore-avr'), DST = path.join(ROOT, 'vendor/esp32-core');
-const VERSION = '2';
+const VERSION = '3';
 if (fs.existsSync(path.join(DST, '.version')) && fs.readFileSync(path.join(DST, '.version'), 'utf8') === VERSION) process.exit(0);
 fs.rmSync(DST, { recursive: true, force: true });
 fs.cpSync(path.join(SRC, 'cores/arduino'), path.join(DST, 'cores/arduino'), { recursive: true });
@@ -34,5 +34,22 @@ patch('libraries/SPI/src/SPI.h', '  static void begin();', `
   static void begin(int8_t sck, int8_t miso = -1, int8_t mosi = -1, int8_t ss = -1) { (void)sck; (void)miso; (void)mosi; (void)ss; begin(); } // ESP32`);
 patch('cores/arduino/IPAddress.h', '    bool fromString(const String &address) { return fromString(address.c_str()); }', `
     String toString() const { char b[16]; snprintf(b, sizeof b, "%u.%u.%u.%u", _address.bytes[0], _address.bytes[1], _address.bytes[2], _address.bytes[3]); return String(b); } // ESP32`);
+// LED RGB de la placa (S3 y C3): digitalWrite(RGB_BUILTIN, …) lo prende en blanco; pines inexistentes se ignoran
+patch('cores/arduino/wiring_digital.c', '#include "pins_arduino.h"', `
+#ifdef RGB_BUILTIN
+extern void esp32_rgb_builtin(uint8_t on);
+#endif`);
+patch('cores/arduino/wiring_digital.c', 'void pinMode(uint8_t pin, uint8_t mode)\n{', `
+#ifdef RGB_BUILTIN
+\tif (pin == RGB_BUILTIN) return;
+#endif
+\tif (pin >= NUM_DIGITAL_PINS) return;`);
+patch('cores/arduino/wiring_digital.c', 'void digitalWrite(uint8_t pin, uint8_t val)\n{', `
+#ifdef RGB_BUILTIN
+\tif (pin == RGB_BUILTIN) { esp32_rgb_builtin(val); return; }
+#endif
+\tif (pin >= NUM_DIGITAL_PINS) return;`);
+patch('cores/arduino/wiring_digital.c', 'int digitalRead(uint8_t pin)\n{', `
+\tif (pin >= NUM_DIGITAL_PINS) return LOW;`);
 fs.writeFileSync(path.join(DST, '.version'), VERSION);
 console.log('vendor/esp32-core listo');

@@ -1,5 +1,8 @@
 // Bluetooth serie del ESP32 (modo compatible): los datos van y vienen del panel «Celular» del simulador.
 #pragma once
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32C3)
+#error "BluetoothSerial (Bluetooth clásico) solo existe en el ESP32 original: el S3 y el C3 solo tienen Bluetooth LE."
+#endif
 #include <Arduino.h>
 class BluetoothSerial : public Stream {
 public:

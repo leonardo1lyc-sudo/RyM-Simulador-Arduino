@@ -1,20 +1,21 @@
-// Genera server/esp32/variant/pins_arduino.h a partir de web/src/esp32map.js
+// Genera server/esp32/variant*/pins_arduino.h (ESP32, S3 y C3) a partir de web/src/esp32map.js
 import fs from 'node:fs';
-import { ESP32_GPIO, ESP32_ADC } from '../web/src/esp32map.js';
-const N = 40, rows = [];
-for (let g = 0; g < N; g++) rows.push(ESP32_GPIO[g] || null);
+import { VARIANTS } from '../web/src/esp32map.js';
+for (const V of Object.values(VARIANTS)) {
+const N = V.n, rows = [];
+for (let g = 0; g < N; g++) rows.push(V.gpio[g] || null);
 const port = rows.map((r, g) => `\t${r ? 'P' + r[0] : 'NOT_A_PIN'}\t, // GPIO ${g}`).join('\n');
 const mask = rows.map((r, g) => `\t${r ? `_BV( ${r[1]} )` : '0'}\t, // GPIO ${g}`).join('\n');
 const timer = rows.map((r, g) => `\t${r && r[2] ? r[2] : 'NOT_ON_TIMER'}\t, // GPIO ${g}`).join('\n');
-const adc = Array.from({ length: N }, (_, g) => ESP32_ADC[g] ?? 0).join(', ');
+const adc = Array.from({ length: N }, (_, g) => V.adc[g] ?? 0).join(', ');
 const pcB = rows.map((r, g) => r && r[0] === 'B' ? g : -1).filter(g => g >= 0), pcK = rows.map((r, g) => r && r[0] === 'K' ? g : -1).filter(g => g >= 0);
 const isIn = list => list.map(g => `(p) == ${g}`).join(' || ');
 const bitOf = list => list.reduceRight((acc, g) => `((p) == ${g} ? ${rows[g][1]} : ${acc})`, '0');
 const pwm = rows.map((r, g) => r && r[2] ? g : -1).filter(g => g >= 0);
-const A = { A0: 36, A3: 39, A4: 32, A5: 33, A6: 34, A7: 35, A10: 4, A11: 0, A12: 2, A13: 15, A14: 13, A15: 12, A16: 14, A17: 27, A18: 25, A19: 26 };
-const T = { T0: 4, T1: 0, T2: 2, T3: 15, T4: 13, T5: 12, T6: 14, T7: 27, T8: 33, T9: 32 };
+const A = V.A;
+const T = V.T;
 const out = `// GENERADO por scripts/gen-esp32-variant.mjs: no editar a mano.
-// Variante «ESP32 DevKit (modo compatible)»: los números de pin son los GPIO del ESP32 y cada uno
+// Variante «${V.name} (modo compatible)»: los números de pin son los GPIO del chip y cada uno
 // corresponde a un pin del ATmega2560 emulado (ver web/src/esp32map.js).
 #ifndef Pins_Arduino_h
 #define Pins_Arduino_h
@@ -27,32 +28,38 @@ const out = `// GENERADO por scripts/gen-esp32-variant.mjs: no editar a mano.
 extern const uint8_t PROGMEM analog_pin_to_channel_PGM[];
 #define analogPinToChannel(P)       ( (P) < ${N} ? pgm_read_byte( analog_pin_to_channel_PGM + (P) ) : 0 )
 
-#define PIN_SPI_SS    (5)
-#define PIN_SPI_MOSI  (23)
-#define PIN_SPI_MISO  (19)
-#define PIN_SPI_SCK   (18)
+#define PIN_SPI_SS    (${V.spi.ss})
+#define PIN_SPI_MOSI  (${V.spi.mosi})
+#define PIN_SPI_MISO  (${V.spi.miso})
+#define PIN_SPI_SCK   (${V.spi.sck})
 static const uint8_t SS   = PIN_SPI_SS;
 static const uint8_t MOSI = PIN_SPI_MOSI;
 static const uint8_t MISO = PIN_SPI_MISO;
 static const uint8_t SCK  = PIN_SPI_SCK;
-#define PIN_WIRE_SDA        (21)
-#define PIN_WIRE_SCL        (22)
+#define PIN_WIRE_SDA        (${V.sda})
+#define PIN_WIRE_SCL        (${V.scl})
 static const uint8_t SDA = PIN_WIRE_SDA;
 static const uint8_t SCL = PIN_WIRE_SCL;
-static const uint8_t TX = 1;
-static const uint8_t RX = 3;
-#define LED_BUILTIN 2
-#define BUILTIN_LED 2
+static const uint8_t TX = ${V.tx};
+static const uint8_t RX = ${V.rx};
+${V.tx1 != null ? `#define TX1 ${V.tx1}\n#define RX1 ${V.rx1}` : ''}
+${V.rgb != null ? `// LED RGB (WS2812) de la placa en GPIO${V.rgb}: digitalWrite(RGB_BUILTIN, HIGH) lo prende en blanco
+#define PIN_RGB_LED ${V.rgb}
+#define RGB_BUILTIN 100
+#define RGB_BRIGHTNESS 64
+#define LED_BUILTIN RGB_BUILTIN
+#define BUILTIN_LED RGB_BUILTIN` : `#define LED_BUILTIN ${V.led}\n#define BUILTIN_LED ${V.led}`}
+#define BANCO_EXT_PINS { ${V.ext.join(', ')} }
+#define BANCO_CHIP_MODEL "${V.chip}"
 ${Object.entries(A).map(([k, v]) => `static const uint8_t ${k} = ${v};`).join('\n')}
 ${Object.entries(T).map(([k, v]) => `static const uint8_t ${k} = ${v};`).join('\n')}
-static const uint8_t DAC1 = 25;
-static const uint8_t DAC2 = 26;
+${V.dac.map((g, i) => `static const uint8_t DAC${i + 1} = ${g};`).join('\n')}
 
 #define digitalPinToPCICR(p)    ( (${isIn(pcB)}) || (${isIn(pcK)}) ? (&PCICR) : ((uint8_t *)0) )
 #define digitalPinToPCICRbit(p) ( (${isIn(pcB)}) ? 0 : 2 )
 #define digitalPinToPCMSK(p)    ( (${isIn(pcB)}) ? (&PCMSK0) : ( (${isIn(pcK)}) ? (&PCMSK2) : ((uint8_t *)0) ) )
 #define digitalPinToPCMSKbit(p) ${bitOf([...pcB, ...pcK])}
-#define digitalPinToInterrupt(p) ((p) < 40 ? (p) : NOT_AN_INTERRUPT) // en el ESP32 el número de interrupción es el GPIO
+#define digitalPinToInterrupt(p) ((p) < ${N} ? (p) : NOT_AN_INTERRUPT) // en el ESP32 el número de interrupción es el GPIO
 
 #ifdef ARDUINO_MAIN
 const uint16_t PROGMEM port_to_mode_PGM[] = {
@@ -87,5 +94,7 @@ const uint8_t PROGMEM analog_pin_to_channel_PGM[] = { ${adc} };
 #define SERIAL_PORT_HARDWARE_OPEN   Serial2
 #endif
 `;
-fs.writeFileSync(new URL('../server/esp32/variant/pins_arduino.h', import.meta.url), out);
-console.log('variante ESP32 generada');
+const dir = new URL(`../server/esp32/${V.dir}/`, import.meta.url);
+fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(new URL('pins_arduino.h', dir), out);
+console.log('variante generada:', V.name);
+}

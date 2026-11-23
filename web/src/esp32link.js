@@ -8,7 +8,7 @@ export class Esp32Link {
   constructor(write){ this.write = write; this.reset(); }
   reset(){
     this.wifi = null; this.ap = null; this.port = 0; this.bt = null; this.warn = new Set(); this.events = [];
-    this.ev = null; this.resp = null; this.queue = []; this.pending = null; this.btText = ''; this.ver = 0; this.started = 0;
+    this.ev = null; this.resp = null; this.queue = []; this.pending = null; this.btText = ''; this.rgb = null; this.ver = 0; this.started = 0;
   }
   // bytes que el programa escribe en Serial1 (Bluetooth) y Serial3 (red)
   onByte(n, b){
@@ -26,6 +26,8 @@ export class Esp32Link {
     else if (t === 'A') { this.ap = d; }
     else if (t === 'S') { this.port = +d || 80; if (!this.started) { this.started = 1; this.onServer && this.onServer(); } }
     else if (t === 'B') { this.bt = d || 'ESP32'; }
+    else if (t === 'L') { this.rgb = d.split(',').map(Number); }
+    else if (t === 'N') this.warn.add(`neopixelWrite(${d}, …): solo se simula el LED RGB de la placa; para tiras WS2812 externas no hay componente todavía.`);
     else if (t === 'X') this.warn.add(`El ESP32 intentó conectarse a ${d || 'internet'}: en la simulación no hay internet, solo el panel Navegador puede conectarse al ESP32.`);
     else if (t === 'T') this.warn.add(`Las tareas de FreeRTOS (xTaskCreate${d ? ' «' + d + '»' : ''}) no se simulan: el modo compatible tiene un solo núcleo. Pon ese código en loop().`);
     else if (t === 'I') this.warn.add(`GPIO${d}: en la simulación este pin no admite interrupciones. Usa GPIO 0, 4, 5, 12, 13, 14, 15, 18, 19, 21, 22, 23, 27 o 34–39.`);

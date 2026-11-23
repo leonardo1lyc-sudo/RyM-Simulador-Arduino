@@ -1419,4 +1419,86 @@ void loop() {
 }
 `,
   },
+  esp32s3rgb: {
+    title: 'ESP32-S3: LED RGB, potenciómetro y BOOT',
+    board: 'esp32s3',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'pot', x: 660, y: 470, rot: 0, name: 'POT1', props: { ohms: 10000, pos: 0.5 } }],
+        wires: [
+          { id: 10, a: 'C1:w', b: 'B:D1', pts: [], color: SIG[1] },
+          { id: 11, a: 'C1:p1', b: 'B:3V3', pts: [], color: RED },
+          { id: 12, a: 'C1:p3', b: 'B:GND.3', pts: [], color: GND },
+        ],
+        counters: { pot: 1 },
+      };
+    },
+    code: `// ESP32-S3: el potenciómetro (GPIO1) regula el brillo del LED RGB de la placa (GPIO48)
+// y el botón BOOT (GPIO0) cambia de color.
+const int POT = 1;
+volatile int color = 0;
+const uint8_t COLORES[][3] = { {255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 160, 0}, {180, 0, 255} };
+const char* NOMBRES[] = { "rojo", "verde", "azul", "naranja", "violeta" };
+
+void IRAM_ATTR cambiar() { color = (color + 1) % 5; }
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(0, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(0), cambiar, FALLING);
+  Serial.printf("Chip: %s\\n", ESP.getChipModel());
+}
+
+void loop() {
+  int lectura = analogRead(POT);            // 0-4095
+  int brillo = map(lectura, 0, 4095, 0, 255);
+  const uint8_t* c = COLORES[color];
+  neopixelWrite(RGB_BUILTIN, c[0] * brillo / 255, c[1] * brillo / 255, c[2] * brillo / 255);
+  Serial.printf("Color %s, brillo %d (pot %d)\\n", NOMBRES[color], brillo, lectura);
+  delay(250);
+}
+`,
+  },
+  esp32c3: {
+    title: 'ESP32-C3: LED que respira y LED RGB',
+    board: 'esp32c3',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'led', x: 150, y: 330, rot: 0, name: 'LED1', props: { color: 'amarillo' } },
+          { id: 2, type: 'res', x: 230, y: 280, rot: 0, name: 'R1', props: { ohms: 220 } },
+        ],
+        wires: [
+          { id: 10, a: 'B:D2', b: 'C2:b', pts: [], color: SIG[0] },
+          { id: 11, a: 'C2:a', b: 'C1:a', pts: [], color: SIG[0] },
+          { id: 12, a: 'C1:k', b: 'B:GND.2', pts: [], color: GND },
+        ],
+        counters: { led: 1, res: 1 },
+      };
+    },
+    code: `// ESP32-C3: un LED en GPIO2 sube y baja de brillo con LEDC; el LED RGB de la placa (GPIO8)
+// parpadea en blanco con digitalWrite(RGB_BUILTIN). Mantén pulsado BOOT (GPIO9) para pausar.
+const int LED = 2;
+const int BOOT = 9;
+volatile int pulsaciones = 0;
+void IRAM_ATTR contar() { pulsaciones++; }
+
+void setup() {
+  Serial.begin(115200);
+  ledcAttach(LED, 5000, 8);          // API 3.x: pin, frecuencia, resolución
+  pinMode(BOOT, INPUT_PULLUP);
+  attachInterrupt(BOOT, contar, FALLING);
+  Serial.printf("%s con %d núcleo\\n", ESP.getChipModel(), ESP.getChipCores());
+}
+
+void loop() {
+  if (digitalRead(BOOT) == LOW) { delay(20); return; }
+  for (int d = 0; d <= 255; d += 5) { ledcWrite(LED, d); delay(8); }
+  digitalWrite(RGB_BUILTIN, HIGH);
+  for (int d = 255; d >= 0; d -= 5) { ledcWrite(LED, d); delay(8); }
+  digitalWrite(RGB_BUILTIN, LOW);
+  Serial.printf("Ciclo listo, BOOT pulsado %d veces\\n", pulsaciones);
+}
+`,
+  },
 };

@@ -32,9 +32,11 @@ export const BOARDS = {
     coreRoot: path.join(VENDOR, 'esp32-core'), variantDir: path.join(ESP32, 'variant') },
 };
 BOARDS.esp32cam = BOARDS.esp32; // la ESP32-CAM usa el mismo chip y la misma numeración (comparten el núcleo compilado)
+BOARDS.esp32s3 = { ...BOARDS.esp32, name: 'ESP32-S3 DevKitC-1', define: 'ARDUINO_ESP32S3_DEV', target: 'ESP32S3', variantDir: path.join(ESP32, 'variant-s3') };
+BOARDS.esp32c3 = { ...BOARDS.esp32, name: 'ESP32-C3 DevKitM-1', define: 'ARDUINO_ESP32C3_DEV', target: 'ESP32C3', variantDir: path.join(ESP32, 'variant-c3') };
 const COMPAT_H = path.join(ESP32, 'libraries', 'ESP32Compat', 'src', 'esp32compat.h');
 const flagsFor = b => {
-  const MCU = ['-mmcu=' + b.mcu, '-DF_CPU=16000000L', '-DARDUINO=10819', '-D' + b.define, '-DARDUINO_ARCH_AVR', ...(b.esp32 ? ['-DBANCO_ESP32', '-DSERIAL_RX_BUFFER_SIZE=256'] : [])];
+  const MCU = ['-mmcu=' + b.mcu, '-DF_CPU=16000000L', '-DARDUINO=10819', '-D' + b.define, '-DARDUINO_ARCH_AVR', ...(b.esp32 ? ['-DBANCO_ESP32', '-DSERIAL_RX_BUFFER_SIZE=256', '-DCONFIG_IDF_TARGET_' + (b.target || 'ESP32')] : [])];
   return {
     c: ['-c', '-g', '-Os', '-w', '-std=gnu11', '-ffunction-sections', '-fdata-sections', '-MMD', ...MCU],
     cxx: ['-c', '-g', '-Os', '-w', '-std=gnu++11', '-fpermissive', '-fno-exceptions', '-ffunction-sections', '-fdata-sections', '-fno-threadsafe-statics', '-Wno-error=narrowing', ...MCU],

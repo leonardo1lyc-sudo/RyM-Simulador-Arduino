@@ -1,5 +1,5 @@
 // Placas Arduino: pines (número Arduino -> puerto/bit del microcontrolador), terminales en el lienzo y dibujo.
-import { ESP32_GPIO, ESP32_ADC } from './esp32map.js';
+import { ESP32_GPIO, ESP32_ADC, VARIANTS } from './esp32map.js';
 const PITCH = 17.6; // 2,54 mm en unidades del lienzo
 
 /* ---------- utilidades de dibujo ---------- */
@@ -208,7 +208,7 @@ const esp32 = makeBoard({
     ...Object.entries(ESP32_ADC).map(([g, c]) => [+g, (+g >= 32 ? 'ADC1' : 'ADC2') + ' (analogRead, 0–4095)']),
     ...[[4, 0], [0, 1], [2, 2], [15, 3], [13, 4], [12, 5], [14, 6], [27, 7], [33, 8], [32, 9]].map(([g, t]) => [g, 'táctil T' + t])]),
   i2c: { sda: 'D21', scl: 'D22' }, spi: { mosi: 23, sck: 18 }, uarts: [{ rx: 3, tx: 1 }, null, { rx: 16, tx: 17 }, null],
-  nets: [['GND.1', 'GND.2']], supplies: [['3V3', 3.3, 0.5], ['VIN', 5, 0.05], ['EN', 3.3, 10000], ['D0', 3.3, 10000]],
+  nets: [['GND.1', 'GND.2']], supplies: [['3V3', 3.3, 0.5], ['VIN', 5, 0.05], ['EN', 3.3, 10000], ['D0', 3.3, 10000]], bootPin: 0, btUart: 1,
 });
 (function(B){
   const { x, y, w, h } = B.rect, y0 = y + 120;
@@ -265,6 +265,7 @@ const esp32cam = makeBoard({
     [16, 'en la placa real lo usa la PSRAM'], ...[[12, 10], [13, 11], [14, 9], [15, 14], [2, 13], [4, 12], [0, 15]].map(([g]) => [g, 'ADC2 (analogRead, 0–4095)'])]),
   i2c: { sda: 'D14', scl: 'D15' }, spi: { mosi: 13, sck: 14 }, uarts: [{ rx: 3, tx: 1 }, null, { rx: 16, tx: 17 }, null],
   nets: [['GND.1', 'GND.2', 'GND.3']], supplies: [['5V', 5, 0.05], ['3V3', 3.3, 0.5], ['VCC', 3.3, 0.5], ['D0', 3.3, 10000]],
+  btUart: 1,
 });
 (function(B){
   const { x, y, w, h } = B.rect, y0 = y + h - 16 - 7 * PITCH;
@@ -304,4 +305,75 @@ const esp32cam = makeBoard({
   };
 })(esp32cam);
 
-export const BOARDS = { uno, nano, mega, esp32, esp32cam };
+/* =========================================================================
+   ESP32-S3 DevKitC-1 y ESP32-C3 DevKitM-1 en modo compatible (otra numeración de GPIO, LED RGB en la placa)
+   ========================================================================= */
+function espDevkit(def, V, L, R, labels){
+  const pins = []; for (let g = 0; g < V.n; g++) { const m = V.gpio[g]; pins.push(m ? [m[0], m[1]] : null); }
+  const B = makeBoard({ chipName: def.chip, mcu: 'atmega2560', canvasW: 1100, vio: 3.3, esp32: true, rgbPin: V.rgb, ...def,
+    pins, firstAnalog: 99, analog: { ...V.adc }, pwm: new Set(), pinExtra: {},
+    i2c: { sda: 'D' + V.sda, scl: 'D' + V.scl }, spi: { mosi: V.spi.mosi, sck: V.spi.sck } });
+  const { x, y, w, h } = B.rect, y0 = y + h - 18 - (L.length - 1) * PITCH;
+  L.forEach((id, i) => B.add(id, x + 14, y0 + i * PITCH, -1, 0));
+  R.forEach((id, i) => { B.add(id, x + w - 14, y0 + i * PITCH, 1, 0); B.terms[id].labelLeft = true; });
+  B.pinName = p => 'D' + p;
+  B.pinOfName = id => { const m = /^D(\d+)$/.exec(id); return m && pins[+m[1]] ? +m[1] : -1; };
+  B.label = id => { const base = id.replace(/\.\d+$/, ''); const m = /^D(\d+)$/.exec(base); return m ? (labels[+m[1]] || String(+m[1])) : base; };
+  B.title = id => {
+    const base = id.replace(/\.\d+$/, '');
+    if (base === 'GND') return 'GND (tierra, 0 V)'; if (base === '3V3') return '3,3 V (salida del regulador)'; if (base === '5V') return '5 V (del USB)'; if (base === 'EN') return 'EN / RST (reinicio, activo en LOW; no simulado)';
+    const p = B.pinOfName(base); if (p < 0) return base;
+    return `GPIO${p}${B.notes[p] ? ' · ' + B.notes[p] : ''}`;
+  };
+  B.keys = pins.map((m, p) => m ? 'B:D' + p : null).filter(Boolean);
+  B.draw = () => {
+    let s = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="#1b1d20" stroke="#000" stroke-width="2"/>`;
+    const mx = x + 34, mw = w - 68;
+    s += `<rect x="${mx}" y="${y + 8}" width="${mw}" height="${def.modH}" rx="2" fill="#262a2e"/>`;
+    s += `<path d="M${mx + 10} ${y + 34} v-18 h14 v14 h14 v-14 h14 v14 h14 v-14 h${mw - 76}" fill="none" stroke="#c9a54a" stroke-width="2.2"/>`;
+    s += `<rect x="${mx + 6}" y="${y + 44}" width="${mw - 12}" height="${def.modH - 42}" rx="3" fill="#b8bec3" stroke="#8b9297"/>`;
+    s += `<text x="${x + w / 2}" y="${y + 44 + (def.modH - 42) / 2}" font-family="var(--f-ui)" font-weight="700" font-size="12" fill="#4a5056" text-anchor="middle">${def.chip}</text><text x="${x + w / 2}" y="${y + 58 + (def.modH - 42) / 2}" font-family="var(--f-code)" font-size="7" fill="#5b6268" text-anchor="middle">${def.module} · modo compatible</text>`;
+    s += `<rect x="${x + 4}" y="${y0 - 10}" width="20" height="${(L.length - 1) * PITCH + 20}" rx="2" fill="var(--header)"/><rect x="${x + w - 24}" y="${y0 - 10}" width="20" height="${(R.length - 1) * PITCH + 20}" rx="2" fill="var(--header)"/>`;
+    for (const id of [...L, ...R]) s += `<rect data-pinled="${id}" x="${B.terms[id].x - 3.5}" y="${B.terms[id].y - 3.5}" width="7" height="7" fill="#0c0c0c" stroke="#3a3a3a"/>`;
+    s += pinLabels(B);
+    // LED RGB, LED de encendido, botones y USB
+    const cy = y + def.modH + 34;
+    s += `<rect id="bRGB" x="${x + w / 2 - 7}" y="${cy}" width="14" height="14" rx="2" fill="#e8e8e4" stroke="#9a9a94"/><text class="silk" x="${x + w / 2}" y="${cy + 26}" font-size="7.5" text-anchor="middle">RGB · IO${V.rgb}</text>`;
+    s += `<rect x="${x + w / 2 - 5}" y="${cy + 40}" width="10" height="6" rx="1" fill="#ff3b30" filter="url(#glowS)" opacity=".9"/><text class="silk" x="${x + w / 2}" y="${cy + 56}" font-size="7" text-anchor="middle">PWR</text>`;
+    s += `<rect id="bL" width="0" height="0"/>`;
+    const by = y + h - 46;
+    s += `<g class="ctrl" data-ctrl="boot"><rect x="${x + 42}" y="${by}" width="22" height="18" rx="2" fill="#c9cfd2"/><rect x="${x + 47}" y="${by + 4}" width="12" height="10" rx="2" fill="#3a3f44"/><title>BOOT: une GPIO${def.bootPin} a GND mientras lo mantienes pulsado</title></g><text class="silk" x="${x + 53}" y="${by - 4}" font-size="8" text-anchor="middle">BOOT</text>`;
+    s += `<g class="ctrl" data-ctrl="reset"><rect x="${x + w - 64}" y="${by}" width="22" height="18" rx="2" fill="#c9cfd2"/><rect x="${x + w - 59}" y="${by + 4}" width="12" height="10" rx="2" fill="#3a3f44"/><title>RST: reiniciar</title></g><text class="silk" x="${x + w - 53}" y="${by - 4}" font-size="8" text-anchor="middle">RST</text>`;
+    s += `<rect x="${x + w / 2 - 20}" y="${y + h - 24}" width="40" height="30" rx="3" fill="#b9c0c4" stroke="#7d868b"/>`;
+    s += `<rect id="bTX" width="0" height="0"/><rect id="bRX" width="0" height="0"/>`;
+    return s;
+  };
+  return B;
+}
+const S3V = VARIANTS.esp32s3, C3V = VARIANTS.esp32c3;
+const esp32s3 = espDevkit({
+  id: 'esp32s3', name: 'ESP32-S3 DevKitC-1', chip: 'ESP32-S3', module: 'WROOM-1', modH: 150, bootPin: 0,
+  rect: { x: 300, y: 110, w: 230, h: 600 },
+  notes: notesFrom([[43, 'TX del puerto serie (USB)'], [44, 'RX del puerto serie (USB)'], [17, 'TX1 (Serial1)'], [18, 'RX1 (Serial1)'], [8, 'SDA (I2C)'], [9, 'SCL (I2C)'],
+    [11, 'MOSI (SPI)'], [13, 'MISO (SPI)'], [12, 'SCK (SPI)'], [10, 'SS (SPI)'], [0, 'botón BOOT (a GND al pulsar)'], [48, 'LED RGB de la placa'], [19, 'USB D−'], [20, 'USB D+'],
+    ...Object.keys(S3V.adc).map(g => [+g, (+g <= 10 ? 'ADC1' : 'ADC2') + ' (analogRead, 0–4095)']), ...Object.values(S3V.T).map(g => [g, 'táctil'])]),
+  uarts: [{ rx: 44, tx: 43 }, { rx: 18, tx: 17 }, { rx: 19, tx: 20 }, null],
+  nets: [['GND.1', 'GND.2', 'GND.3', 'GND.4'], ['3V3', '3V3.2']], supplies: [['3V3', 3.3, 0.5], ['5V', 5, 0.05], ['EN', 3.3, 10000], ['D0', 3.3, 10000]],
+}, S3V,
+  ['3V3', '3V3.2', 'EN', 'D4', 'D5', 'D6', 'D7', 'D15', 'D16', 'D17', 'D18', 'D8', 'D3', 'D46', 'D9', 'D10', 'D11', 'D12', 'D13', 'D14', '5V', 'GND.1'],
+  ['GND.2', 'D43', 'D44', 'D1', 'D2', 'D42', 'D41', 'D40', 'D39', 'D38', 'D37', 'D36', 'D35', 'D0', 'D45', 'D48', 'D47', 'D21', 'D20', 'D19', 'GND.3', 'GND.4'],
+  { 43: 'TX', 44: 'RX' });
+const esp32c3 = espDevkit({
+  id: 'esp32c3', name: 'ESP32-C3 DevKitM-1', chip: 'ESP32-C3', module: 'MINI-1', modH: 110, bootPin: 9,
+  rect: { x: 320, y: 140, w: 200, h: 440 },
+  notes: notesFrom([[21, 'TX del puerto serie (USB)'], [20, 'RX del puerto serie (USB)'], [19, 'TX1 (Serial1) · USB D+'], [18, 'RX1 (Serial1) · USB D−'], [8, 'SDA (I2C) · LED RGB de la placa'], [9, 'SCL (I2C) · botón BOOT (a GND al pulsar)'],
+    [6, 'MOSI (SPI)'], [5, 'MISO (SPI)'], [4, 'SCK (SPI)'], [7, 'SS (SPI)'], ...Object.keys(C3V.adc).map(g => [+g, (+g <= 4 ? 'ADC1' : 'ADC2') + ' (analogRead, 0–4095)'])]),
+  uarts: [{ rx: 20, tx: 21 }, { rx: 18, tx: 19 }, null, null],
+  nets: [['GND.1', 'GND.2', 'GND.3', 'GND.4', 'GND.5', 'GND.6', 'GND.7', 'GND.8', 'GND.9', 'GND.10'], ['3V3', '3V3.2'], ['5V', '5V.2']],
+  supplies: [['3V3', 3.3, 0.5], ['5V', 5, 0.05], ['EN', 3.3, 10000], ['D9', 3.3, 10000]],
+}, C3V,
+  ['GND.1', '3V3', '3V3.2', 'D2', 'D3', 'GND.2', 'EN', 'GND.3', 'D0', 'D1', 'D10', 'GND.4', '5V', '5V.2', 'GND.5'],
+  ['GND.6', 'D21', 'D20', 'GND.7', 'D9', 'D8', 'GND.8', 'D7', 'D6', 'D5', 'D4', 'GND.9', 'D18', 'D19', 'GND.10'],
+  { 21: 'TX', 20: 'RX' });
+
+export const BOARDS = { uno, nano, mega, esp32, esp32cam, esp32s3, esp32c3 };
