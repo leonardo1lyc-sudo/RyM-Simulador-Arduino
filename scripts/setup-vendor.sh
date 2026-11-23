@@ -34,6 +34,8 @@ fetch Makuna/Rtc libraries/Rtc 7928697ff4a5e4ae55824c47b961aac0503720d9
 fetch PaulStoffregen/OneWire libraries/OneWire 72249e22ef9092b0750e303d266199965a89e500
 fetch milesburton/Arduino-Temperature-Control-Library libraries/DallasTemperature 3f570bbe2d0ad3cae55663cfaec1fedbc5b4fa50
 fetch arduino-libraries/Stepper libraries/Stepper cee62bb4de4519f05b68f2a5732cd20e2f324568
+# tanda 4: tiras y aros LED inteligentes (WS2812)
+fetch adafruit/Adafruit_NeoPixel libraries/Adafruit_NeoPixel fd742876af408a883b00586763c34e058cf7e63a
 # ESP32 en modo compatible: copia parcheada del núcleo AVR
 node scripts/setup-esp32-core.mjs
 echo "vendor/ listo"

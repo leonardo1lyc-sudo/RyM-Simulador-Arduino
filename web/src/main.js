@@ -36,10 +36,11 @@ function setBoard(id){ BRD = BOARDS[id] || BOARDS.uno; BPIN = BRD.terms; NP = BR
 let state = null, sel = null, drawing = null, drag = null;
 const compById = id => state.comps.find(c => c.id === id);
 function rot(x, y, r){ switch (((r % 360) + 360) % 360) { case 90: return [-y, x]; case 180: return [-x, -y]; case 270: return [y, -x]; default: return [x, y]; } }
+function termDef(c, t){ const def = TYPES[c.type]; const o = def.dynTerms ? def.dynTerms(c)[t] : null; return o || def.terms[t]; } // posición que depende de las opciones (p. ej. largo de una tira)
 function termPos(key){
   if (key.startsWith('B:')) { const p = BPIN[key.slice(2)]; return p ? { x: p.x, y: p.y, dx: p.dx, dy: p.dy } : null; }
   const m = /^C(\d+):(\w+)$/.exec(key); if (!m) return null; const c = compById(+m[1]); if (!c) return null;
-  const d = TYPES[c.type].terms[m[2]]; if (!d) return null;
+  const d = termDef(c, m[2]); if (!d) return null;
   const [x, y] = rot(d.x, d.y, c.rot), [dx, dy] = rot(d.dx, d.dy, c.rot);
   return { x: c.x + x, y: c.y + y, dx, dy };
 }
@@ -165,6 +166,7 @@ function mapDevices(){
     const def = TYPES[c.type];
     if (def.device) {
       let d = simDevs.get(c.id); if (!d || d.c !== c) { d = def.device(c, devApi(c)); d.c = c; if (d.reset) d.reset(); simDevs.set(c.id, d); }
+      else if (d.remap) d.remap(); // cables cambiados: vuelve a buscar sus pines
       devices.sim.push(d);
     }
     if (c.type === 'oled') {
@@ -197,6 +199,8 @@ function devApi(c){
   const T = t => `C${c.id}:${t}`;
   a = {
     pin: t => pinOf(T(t)),
+    node: t => circuit.node(T(t)),
+    nodeOf: (o, t) => circuit.node(`C${o.id}:${t}`),
     powered: (vcc, gnd, min = 4) => !!lastSol && voltage(lastSol, T(vcc)) - voltage(lastSol, T(gnd)) > min,
     state: p => uno ? uno.state[p] : PinState.Input,
     now: () => uno ? uno.cycles : 0,
@@ -531,7 +535,7 @@ $('#sound').onclick = () => { soundOn = !soundOn; $('#sound').setAttribute('aria
 function renderComps(){
   let s = '';
   for (const c of state.comps) {
-    const t = TYPES[c.type]; const [bx, by, bw, bh] = t.box;
+    const t = TYPES[c.type]; const [bx, by, bw, bh] = typeof t.box === 'function' ? t.box(c) : t.box;
     const isSel = sel && sel.kind === 'comp' && sel.id === c.id;
     s += `<g class="comp${isSel ? ' sel' : ''}" data-comp="${c.id}" transform="translate(${c.x},${c.y}) rotate(${c.rot})"><rect class="outline" x="${bx - 4}" y="${by - 4}" width="${bw + 8}" height="${bh + 8}" rx="6"/>${t.svg(c)}</g>`;
   }

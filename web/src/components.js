@@ -3,6 +3,7 @@ import { MODULES } from './modules.js';
 import { KITS } from './kits.js';
 import { KITS2 } from './kits2.js';
 import { KITS3 } from './kits3.js';
+import { KITS4 } from './kits4.js';
 export const LED_COLORS = {
   rojo:    { c: '#ff3b30', off: '#8a2a24', vf: 1.8 },
   naranja: { c: '#ff8a1f', off: '#8a4a1a', vf: 1.9 },
@@ -173,11 +174,12 @@ export const TYPES = {
     },
     elec(c, T, E){ E.res(T('VCC'), T('GND'), 5000); E.res(T('SDA'), T('VCC'), 10000); E.res(T('SCL'), T('VCC'), 10000); },
   },
-  ...MODULES, ...KITS, ...KITS2, ...KITS3,
+  ...MODULES, ...KITS, ...KITS2, ...KITS3, ...KITS4,
 };
 
 export const LIBRARY = [
   { cat: 'Salidas', items: ['led', 'rgb', 'led2', 'traffic', 'laser', 'buzzer', 'buzza', 'buzzp', 'servo', 'motor', 'stepper', 'l298n'] },
+  { cat: 'Tiras y aros LED', items: ['neostrip', 'neoring', 'rgbstrip', 'rgbring'] },
   { cat: 'Relés', items: ['relay', 'relay2', 'relay4', 'relay8'] },
   { cat: 'Entradas', items: ['btn', 'kybtn', 'touch', 'sw', 'pot', 'joy', 'keypad', 'encoder'] },
   { cat: 'Sensores', items: ['sr04', 'irobst', 'pir', 'dht', 'ds18b20', 'soil', 'rain', 'water', 'ntc', 'tempd', 'ldr', 'ldrmod', 'flame', 'gas', 'sound', 'tilt', 'knock', 'reed', 'hall', 'hallan', 'line'] },
@@ -188,8 +190,8 @@ export const LIBRARY = [
 ];
 
 export function icon(type){
-  const t = TYPES[type]; const [x, y, w, h] = t.box;
-  const c = { id: 'i', type, name: '', props: t.props() };
+  const t = TYPES[type]; const c0 = { props: t.iconProps ? t.iconProps() : t.props() }; const [x, y, w, h] = typeof t.box === 'function' ? t.box(c0) : t.box;
+  const c = { id: 'i', type, name: '', props: c0.props };
   if (type === 'led') c.props.color = 'rojo';
   let inner = t.svg(c).replace(/<text[^>]*class="clabel"[^>]*>.*?<\/text>/g, '').replace(/ data-[a-z]+="[^"]*"/g, '');
   if (type === 'rgb') inner = inner.replace('fill="#dfe3e6"', 'fill="#d9b8ff"');

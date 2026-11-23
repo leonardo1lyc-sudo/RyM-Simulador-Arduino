@@ -1501,4 +1501,59 @@ void loop() {
 }
 `,
   },
+  neopixel: {
+    title: 'Tira y aro NeoPixel (WS2812B)',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'neostrip', x: 640, y: 110, rot: 0, name: 'NEO1', props: { n: 10 } },
+          { id: 2, type: 'neoring', x: 820, y: 330, rot: 0, name: 'ARO1', props: { n: 10 } },
+        ],
+        wires: [
+          { id: 10, a: 'B:D6', b: 'C1:DIN', pts: [], color: SIG[0] },
+          { id: 11, a: 'B:5V', b: 'C1:VCC', pts: [], color: RED },
+          { id: 12, a: 'B:GND.1', b: 'C1:GND', pts: [], color: GND },
+          { id: 13, a: 'B:D5', b: 'C2:DIN', pts: [], color: SIG[1] },
+          { id: 14, a: 'C1:VCC', b: 'C2:VCC', pts: [], color: RED },
+          { id: 15, a: 'C1:GND', b: 'C2:GND', pts: [], color: GND },
+        ],
+        counters: { neostrip: 1, neoring: 1 },
+      };
+    },
+    code: `// Tira y aro NeoPixel (WS2812B) con la librería Adafruit_NeoPixel
+// La tira (pin 6) muestra un arcoíris que avanza; el aro (pin 5) una luz que gira.
+// Cambia la cantidad de LED en el panel de cada componente (tira: 1 a 15, aro: 1 a 10).
+#include <Adafruit_NeoPixel.h>
+
+const int N_TIRA = 10, N_ARO = 10;
+Adafruit_NeoPixel tira(N_TIRA, 6, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel aro(N_ARO, 5, NEO_GRB + NEO_KHZ800);
+
+void setup() {
+  tira.begin();
+  aro.begin();
+  tira.setBrightness(80);   // 0..255: menos brillo, menos consumo
+  aro.setBrightness(80);
+}
+
+uint16_t tono = 0;
+int pos = 0;
+
+void loop() {
+  for (int i = 0; i < N_TIRA; i++) {
+    tira.setPixelColor(i, tira.gamma32(tira.ColorHSV(tono + i * 65536L / N_TIRA)));
+  }
+  tira.show();
+
+  aro.clear();
+  aro.setPixelColor(pos, aro.Color(0, 120, 255));
+  aro.setPixelColor((pos + N_ARO - 1) % N_ARO, aro.Color(0, 20, 60));
+  aro.show();
+
+  pos = (pos + 1) % N_ARO;
+  tono += 2048;
+  delay(80);
+}
+`,
+  },
 };
