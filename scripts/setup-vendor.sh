@@ -45,6 +45,8 @@ fetch adafruit/Adafruit_MPU6050 libraries/Adafruit_MPU6050 502a7caccda630a151dfb
 fetch ElectronicCats/mpu6050 libraries/MPU6050 8beccc728c30fc0f557d1f24badd86369123b1ba
 fetch sui77/rc-switch libraries/RCSwitch 436a74b03f3dc17a29ee327af29d5a05d77f94b9
 fetch adafruit/Adafruit_ILI9341 libraries/Adafruit_ILI9341 f8052f6f9a2212e24a41ee8c69df2d9638de622c
+# reloj DS3231 (RTClib de Adafruit)
+fetch adafruit/RTClib libraries/RTClib 5298434167b770c4602661d682e3b340d565073f
 # ESP32 en modo compatible: copia parcheada del núcleo AVR
 node scripts/setup-esp32-core.mjs
 echo "vendor/ listo"

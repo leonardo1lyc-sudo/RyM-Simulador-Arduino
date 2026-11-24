@@ -206,7 +206,7 @@ export const LIBRARY = [
   { cat: 'Sensores', items: ['sr04', 'irobst', 'pir', 'dht', 'ds18b20', 'soil', 'rain', 'water', 'ntc', 'tempd', 'ldr', 'ldrmod', 'flame', 'gas', 'sound', 'tilt', 'knock', 'reed', 'hall', 'hallan', 'line', 'tcs3200', 'mpu6050'] },
   { cat: 'Pantallas', items: ['lcd', 'lcdi2c', 'lcd2004', 'oled', 'ili9341', 'max7219', 'seg7', 'tm1637'] },
   { cat: 'Comunicación', items: ['hc05', 'sim800l', 'pn532', 'rftx', 'rfrx', 'irrx', 'irremote'] },
-  { cat: 'Módulos', items: ['ds1302', 'rc522', 'sdcard', 'dfplayer'] },
+  { cat: 'Módulos', items: ['ds1302', 'ds3231', 'rc522', 'sdcard', 'dfplayer'] },
   { cat: 'Pasivos y energía', items: ['res', 'cap', 'ecap', 'xtal', 'battery', 'vreg', 'hdrm', 'hdrf', 'bornera'] },
   { cat: 'Protoboards', items: ['bb830', 'bb400', 'bb170'] },
   { cat: 'Semiconductores', items: ['diode', 'zener', 'npn', 'pnp', 'mosfet'] },

@@ -7,7 +7,7 @@ const PROVIDERS = {
   gemini: { name: 'Google Gemini (gratis)', model: 'gemini-flash-latest', keyUrl: 'https://aistudio.google.com/apikey', keyHint: 'AIza…' },
   claude: { name: 'Anthropic Claude (pago por uso)', model: 'claude-opus-5-5', keyUrl: 'https://console.anthropic.com/settings/keys', keyHint: 'sk-ant-…' },
 };
-const LIBS = 'Servo.h, LiquidCrystal.h, LiquidCrystal_I2C.h, Wire.h, SPI.h, SoftwareSerial.h, Adafruit_GFX.h + Adafruit_SSD1306.h, DHT.h, LedControl.h, TM1637Display.h, Keypad.h, IRremote.hpp, MFRC522.h, RtcDS1302.h (+ThreeWire.h), OneWire.h + DallasTemperature.h, Stepper.h, Adafruit_NeoPixel.h, Adafruit_PN532.h, SD.h, DFRobotDFPlayerMini.h, Adafruit_MPU6050.h + Adafruit_Sensor.h, MPU6050.h, RCSwitch.h, Adafruit_ILI9341.h; en placas ESP32 también WiFi.h, WebServer.h, BluetoothSerial.h';
+const LIBS = 'Servo.h, LiquidCrystal.h, LiquidCrystal_I2C.h, Wire.h, SPI.h, SoftwareSerial.h, Adafruit_GFX.h + Adafruit_SSD1306.h, DHT.h, LedControl.h, TM1637Display.h, Keypad.h, IRremote.hpp, MFRC522.h, RtcDS1302.h (+ThreeWire.h), OneWire.h + DallasTemperature.h, Stepper.h, Adafruit_NeoPixel.h, Adafruit_PN532.h, SD.h, DFRobotDFPlayerMini.h, Adafruit_MPU6050.h + Adafruit_Sensor.h, MPU6050.h, RCSwitch.h, Adafruit_ILI9341.h, RTClib.h; en placas ESP32 también WiFi.h, WebServer.h, BluetoothSerial.h';
 
 function loadCfg(){ try { return { provider: 'gemini', keys: {}, models: {}, circuit: true, ...JSON.parse(localStorage.getItem(CFG_KEY) || '{}') }; } catch { return { provider: 'gemini', keys: {}, models: {}, circuit: true }; } }
 function saveCfg(c){ try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); } catch {} }

@@ -2020,6 +2020,99 @@ void loop() {
 }
 `,
   },
+  reloj3231: {
+    title: 'Reloj DS3231 con alarma, EEPROM y LCD 20×4 (RTClib)',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'ds3231', x: 860, y: 470, rot: 0, name: 'RTC1', props: { temp: 24, bat: true, eeaddr: 0x57, ee: '' } },
+          { id: 2, type: 'lcd2004', x: 1000, y: 160, rot: 0, name: 'LCD1', props: { address: 0x27, color: 'azul' } },
+        ],
+        wires: [
+          { id: 10, a: 'C1:SDA', b: 'B:A4', pts: [], color: SIG[1] },
+          { id: 11, a: 'C1:SCL', b: 'B:A5', pts: [], color: SIG[0] },
+          { id: 12, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 13, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+          { id: 14, a: 'C1:SQW', b: 'B:D2', pts: [], color: SIG[3] },
+          { id: 15, a: 'C2:SDA', b: 'C1:SDA2', pts: [], color: SIG[1] },
+          { id: 16, a: 'C2:SCL', b: 'C1:SCL2', pts: [], color: SIG[0] },
+          { id: 17, a: 'C2:VCC', b: 'C1:VCC2', pts: [], color: RED },
+          { id: 18, a: 'C2:GND', b: 'C1:GND2', pts: [], color: GND },
+        ],
+        counters: { ds3231: 1, lcd2004: 1 },
+      };
+    },
+    code: `// Reloj DS3231 (módulo ZS-042) con la librería RTClib: fecha, hora y temperatura en un LCD 20x4.
+// La alarma 1 suena en el segundo 30 de cada minuto: SQW pasa a LOW y prende el LED 13.
+// Además cuenta los arranques en la EEPROM AT24C32 del módulo (dirección I2C 0x57).
+#include <Wire.h>
+#include <RTClib.h>
+#include <LiquidCrystal_I2C.h>
+
+RTC_DS3231 rtc;
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+const char *dias[7] = {"Domingo", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado"};
+const int EEPROM_I2C = 0x57;
+unsigned long ledHasta = 0;
+
+void eeEscribir(unsigned int dir, byte valor) {
+  Wire.beginTransmission(EEPROM_I2C);
+  Wire.write(dir >> 8); Wire.write(dir & 0xFF); Wire.write(valor);
+  Wire.endTransmission();
+  delay(10);                    // la EEPROM tarda en grabar
+}
+
+byte eeLeer(unsigned int dir) {
+  Wire.beginTransmission(EEPROM_I2C);
+  Wire.write(dir >> 8); Wire.write(dir & 0xFF);
+  Wire.endTransmission();
+  Wire.requestFrom(EEPROM_I2C, 1);
+  return Wire.read();
+}
+
+void dosCifras(int n) { if (n < 10) lcd.print('0'); lcd.print(n); }
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(2, INPUT_PULLUP);
+  pinMode(LED_BUILTIN, OUTPUT);
+  lcd.init();
+  lcd.backlight();
+  if (!rtc.begin()) { lcd.print("No hay DS3231"); while (1); }
+  if (rtc.lostPower()) {
+    Serial.println("El reloj perdio la hora: se pone la de compilacion.");
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  }
+  byte n = eeLeer(0);
+  if (n == 0xFF) n = 0;         // EEPROM nueva
+  eeEscribir(0, n + 1);
+  Serial.print("Arranques guardados en la EEPROM: ");
+  Serial.println(n + 1);
+
+  rtc.disable32K();
+  rtc.clearAlarm(1);
+  rtc.clearAlarm(2);
+  rtc.writeSqwPinMode(DS3231_OFF);   // SQW funciona como salida de alarma
+  rtc.setAlarm1(DateTime(2000, 1, 1, 0, 0, 30), DS3231_A1_Second);
+}
+
+void loop() {
+  DateTime t = rtc.now();
+  lcd.setCursor(0, 0); lcd.print(dias[t.dayOfTheWeek()]); lcd.print("          ");
+  lcd.setCursor(0, 1); dosCifras(t.day()); lcd.print('/'); dosCifras(t.month()); lcd.print('/'); lcd.print(t.year());
+  lcd.setCursor(0, 2); dosCifras(t.hour()); lcd.print(':'); dosCifras(t.minute()); lcd.print(':'); dosCifras(t.second());
+  lcd.setCursor(0, 3); lcd.print("Temp: "); lcd.print(rtc.getTemperature(), 2); lcd.print(" C");
+
+  if (digitalRead(2) == LOW) {       // la alarma tira SQW a LOW
+    Serial.print("Alarma a las "); Serial.println(rtc.now().timestamp(DateTime::TIMESTAMP_TIME));
+    rtc.clearAlarm(1);
+    ledHasta = millis() + 3000;
+  }
+  digitalWrite(LED_BUILTIN, millis() < ledHasta);
+  delay(200);
+}
+`,
+  },
   casero: {
     title: 'Arduino casero: ATmega328P con cristal y 7805',
     board: 'dip328',

@@ -186,7 +186,7 @@ function mapDevices(){
   devices.servos = []; devices.lcds = []; devices.buzzers = []; devices.i2c = []; devices.sim = [];
   devices.step = state ? state.comps.filter(c => TYPES[c.type].step) : [];
   pinCache.clear();
-  for (const id of [...simDevs.keys()]) if (!state.comps.some(c => c.id === id)) simDevs.delete(id);
+  for (const [id, d] of [...simDevs]) if (!state.comps.includes(d.c)) simDevs.delete(id); // también si el id pasó a otra pieza (otro proyecto)
   for (const c of state.comps) {
     const T = t => `C${c.id}:${t}`;
     const def = TYPES[c.type];
@@ -195,6 +195,7 @@ function mapDevices(){
       else if (d.remap) d.remap(); // cables cambiados: vuelve a buscar sus pines
       devices.sim.push(d);
       if (d.i2c) devices.i2c.push({ c, bp: d.i2c }); // dispositivos I2C genéricos (PN532, MPU6050…)
+      if (d.i2cs) for (const bp of d.i2cs) devices.i2c.push({ c, bp }); // varios chips en un módulo (DS3231 + EEPROM)
     }
     if (c.type === 'oled') {
       if (!c._oled) c._oled = new SSD1306(c.props.address);
@@ -369,7 +370,11 @@ function frame(now){
     const ok = dipCheck();
     if (!ok && !dipHeld) { dipHeld = true; io.pins.forEach(p => { p.mode = 'INPUT'; p.val = 0; p.duty = null; p.uart = false; }); elecDirty = true; dispDirty = true; }
     else if (ok && dipHeld) { dipHeld = false; startSim(); }
-    if (dipHeld) { const st = $('#status'); st.className = 'chip bad'; st.textContent = 'Chip sin arrancar'; }
+    if (dipHeld) {
+      const st = $('#status'); st.className = 'chip bad'; st.textContent = 'Chip sin arrancar';
+      // el chip está detenido pero la parte analógica sigue: los condensadores (p. ej. el de 100 µF del 7805) se cargan
+      if (devices.step.length) { const sol = solve({ pwm: 'inst', dt: dt / 1000 }); lastSol = sol; for (const c of devices.step) TYPES[c.type].step(c, t => voltage(sol, `C${c.id}:${t}`), dt / 1000); dispDirty = true; }
+    }
   } else dipWarns = [];
   if (running && uno && !dipHeld) {
     const start = uno.cycles; if (!frameStart) frameStart = start;

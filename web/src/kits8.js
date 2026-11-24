@@ -181,7 +181,175 @@ function bornera(){
     readout: () => 'Bornera de tornillo de paso 5,02 mm: cada tornillo queda unido a su pata.',
   };
 }
+
+/* =========================================================================
+   Reloj DS3231 de alta precisión + EEPROM AT24C32 (módulo ZS-042), I2C
+   ========================================================================= */
+const D31 = header(['32K', 'SQW', 'SCL', 'SDA', 'VCC', 'GND'], { x0: -78, y0: -35, dir: 'left', len: 14,
+  labels: { '32K': '32K (salida de 32,768 kHz)', SQW: 'SQW / INT (onda cuadrada o alarma, activo en LOW)', SCL: 'SCL (A5; 21 en el Mega)', SDA: 'SDA (A4; 20 en el Mega)', VCC: 'VCC (3,3–5 V)', GND: 'GND' } });
+const D31B = header(['SCL2', 'SDA2', 'VCC2', 'GND2'], { x0: 78, y0: -21, dir: 'right', len: 14,
+  labels: { SCL2: 'SCL (para encadenar)', SDA2: 'SDA (para encadenar)', VCC2: 'VCC (para encadenar)', GND2: 'GND (para encadenar)' }, texts: { SCL2: 'SCL', SDA2: 'SDA', VCC2: 'VCC', GND2: 'GND' } });
+const bcd2 = v => ((v / 10) | 0) << 4 | (v % 10), unbcd2 = v => (v >> 4) * 10 + (v & 15);
+const pad2 = n => String(n).padStart(2, '0');
+const EE_SIZE = 4096;
+function d31State(c){
+  if (!c._d31) {
+    const d = new Date();
+    c._d31 = { base: d.getTime() - d.getTimezoneOffset() * 60000, cyc0: 0, R: new Uint8Array(19), lost: false };
+    c._d31.R[0x0E] = 0x1C; c._d31.R[0x0F] = 0x08; // INTCN y RS2:RS1; EN32kHz
+  }
+  return c._d31;
+}
+function eeImage(c){
+  if (c._ee) return c._ee;
+  c._ee = new Uint8Array(EE_SIZE).fill(0xFF);
+  if (c.props.ee) { try { const b = atob(c.props.ee); for (let i = 0; i < b.length && i < EE_SIZE; i++) c._ee[i] = b.charCodeAt(i); } catch {} }
+  c._eeVer = 0; c._eeSaved = 0; return c._ee;
+}
+function ds3231Device(c, api){
+  const st = () => d31State(c);
+  const cur = () => { const s = st(); return s.base + (api.now() - s.cyc0) / MS; };
+  const setBase = ms => { const s = st(); s.base = ms; s.cyc0 = api.now(); };
+  let ptr = 0, first = false, snap = null, pend = {}, lastSec = -1, sqw = 1, k32 = 1, gen = 0;
+  const timeRegs = () => {
+    const d = new Date(cur()), R = st().R, h = d.getUTCHours();
+    const hr = (R[2] & 0x40) ? 0x40 | (h >= 12 ? 0x20 : 0) | bcd2(h % 12 || 12) : bcd2(h);
+    return [bcd2(d.getUTCSeconds()), bcd2(d.getUTCMinutes()), hr, d.getUTCDay() || 7, bcd2(d.getUTCDate()), bcd2(d.getUTCMonth() + 1), bcd2(d.getUTCFullYear() % 100)];
+  };
+  const tempRegs = () => { const q = Math.round(c.props.temp * 4); return [(q >> 2) & 0xFF, (q & 3) << 6]; };
+  const read = r => {
+    if (r <= 6) { if (!snap) snap = timeRegs(); return snap[r]; }
+    if (r === 0x11 || r === 0x12) return tempRegs()[r - 0x11];
+    return st().R[r];
+  };
+  const write = (r, v) => {
+    const R = st().R;
+    if (r <= 6) { pend[r] = v; return; }
+    if (r === 0x0F) { R[0x0F] = (R[0x0F] & ~0x8B) | (v & 0x08) | (R[0x0F] & v & 0x83); return; } // los flags solo se borran
+    if (r === 0x11 || r === 0x12) return;
+    if (r < 19) R[r] = v;
+  };
+  const applyTime = () => {
+    if (!Object.keys(pend).length) return;
+    const t = timeRegs(); for (const [i, v] of Object.entries(pend)) t[i] = v; pend = {};
+    const h = (t[2] & 0x40) ? (unbcd2(t[2] & 0x1F) % 12) + ((t[2] & 0x20) ? 12 : 0) : unbcd2(t[2] & 0x3F);
+    st().R[2] = t[2] & 0x40;
+    setBase(Date.UTC(2000 + unbcd2(t[6]), unbcd2(t[5] & 0x1F) - 1, unbcd2(t[4] & 0x3F), h, unbcd2(t[1] & 0x7F), unbcd2(t[0] & 0x7F)));
+  };
+  // alarmas: se revisan una vez por segundo del reloj simulado
+  const alarmMatch = (base, n, d) => {
+    const R = st().R, f = [d.getUTCSeconds(), d.getUTCMinutes(), d.getUTCHours()];
+    const regs = n === 1 ? [R[7], R[8], R[9], R[10]] : [0, R[0x0B], R[0x0C], R[0x0D]];
+    if (n === 2 && f[0] !== 0) return false;
+    for (let i = n === 1 ? 0 : 1; i < 3; i++) {
+      if (regs[i] & 0x80) continue;
+      const want = i === 2 && (regs[2] & 0x40) ? (unbcd2(regs[2] & 0x1F) % 12) + ((regs[2] & 0x20) ? 12 : 0) : unbcd2(regs[i] & (i === 2 ? 0x3F : 0x7F));
+      if (want !== f[i]) return false;
+    }
+    if (regs[3] & 0x80) return true;
+    return (regs[3] & 0x40) ? ((d.getUTCDay() || 7) === (regs[3] & 0x0F)) : unbcd2(regs[3] & 0x3F) === d.getUTCDate();
+  };
+  const intLow = () => { const R = st().R; return (R[0x0E] & 4) && (((R[0x0F] & 1) && (R[0x0E] & 1)) || ((R[0x0F] & 2) && (R[0x0E] & 2))); };
+  const sqwHz = () => { const R = st().R; if (R[0x0E] & 4) return 0; return [1, 1024, 4096, 8192][(R[0x0E] >> 3) & 3]; };
+  let sqwOn = false, k32On = false;
+  const runSqw = () => { // onda cuadrada en SQW (solo si está conectada a un pin)
+    const hz = sqwHz(); if (!api.running() || !hz || hz === 1 || api.pin('SQW') < 0) { sqwOn = false; return; }
+    sqw ^= 1; setOut(c, api, 'SQW', '_sqw', sqw); api.schedule(api.now() + 8e6 / hz, runSqw);
+  };
+  const run32 = () => {
+    if (!api.running() || !(st().R[0x0F] & 0x08) || api.pin('32K') < 0) { k32On = false; return; }
+    k32 ^= 1; setOut(c, api, '32K', '_k32', k32); api.schedule(api.now() + 16e6 / 65536, run32);
+  };
+  const tick = () => {
+    if (!api.now()) return false;
+    const s = st(), d = new Date(cur()), sec = Math.floor(d.getTime() / 1000); s.last = d.getTime();
+    let ch = false;
+    if (sec !== lastSec) {
+      if (lastSec >= 0) for (let t = Math.max(lastSec + 1, sec - 5); t <= sec; t++) { const dd = new Date(t * 1000); if (alarmMatch(0, 1, dd)) s.R[0x0F] |= 1; if (alarmMatch(0, 2, dd)) s.R[0x0F] |= 2; }
+      lastSec = sec;
+    }
+    const hz = sqwHz();
+    let v = intLow() ? 0 : 1;
+    if (!(s.R[0x0E] & 4) && hz === 1) v = (d.getTime() % 1000) < 500 ? 1 : 0;
+    if (hz > 1) { if (!sqwOn) { sqwOn = true; runSqw(); } }
+    else if (c._sqw !== v) { setOut(c, api, 'SQW', '_sqw', v); ch = true; }
+    if ((s.R[0x0F] & 0x08) && !k32On && api.pin('32K') >= 0) { k32On = true; run32(); }
+    return ch;
+  };
+  const ee = { ptr: 0, n: 0, first: false, page: [] };
+  return {
+    i2c: {
+      address: 0x68,
+      ready: () => api.powered('VCC', 'GND', 2.3) && api.node('SDA') === api.boardNode(api.board().i2c.sda) && api.node('SCL') === api.boardNode(api.board().i2c.scl),
+      begin(w){ first = w; snap = null; },
+      write(b){ if (first) { ptr = b; first = false; } else { write(ptr, b); ptr = (ptr + 1) % 19; } },
+      read(){ const v = read(ptr); ptr = (ptr + 1) % 19; return v; },
+      end(){ applyTime(); snap = null; },
+    },
+    i2cs: [{ // EEPROM AT24C32: 4 KB, dirección de 2 bytes, páginas de 32 bytes
+      get address(){ return c.props.eeaddr; },
+      ready: () => api.powered('VCC', 'GND', 2.3) && api.node('SDA') === api.boardNode(api.board().i2c.sda) && api.node('SCL') === api.boardNode(api.board().i2c.scl),
+      begin(w){ ee.first = w; ee.n = 0; ee.page = []; },
+      write(b){ if (ee.first) { if (ee.n === 0) ee.ptr = (b << 8) & 0x0F00; else { ee.ptr |= b; ee.first = false; } ee.n++; } else ee.page.push(b); },
+      read(){ const m = eeImage(c), v = m[ee.ptr]; ee.ptr = (ee.ptr + 1) % EE_SIZE; return v; },
+      end(){
+        if (!ee.page.length) return;
+        const m = eeImage(c), base = ee.ptr & ~31; let off = ee.ptr & 31;
+        for (const b of ee.page) { m[base + off] = b; off = (off + 1) & 31; }
+        ee.page = []; c._eeVer = (c._eeVer || 0) + 1; c._eeW = (c._eeW || 0) + 1;
+      },
+    }],
+    reset(){
+      ptr = 0; snap = null; pend = {}; lastSec = -1; sqwOn = false; k32On = false; c._sqw = c._k32 = 1;
+      const g = ++gen; const loop = () => { if (g !== gen) return; if (tick()) api.touch(); api.schedule(api.now() + 80000, loop); }; // cada 5 ms simulados
+      api.schedule(api.now() + 80000, loop);
+      if (!c.props.bat) { const s = st(); setBase(Date.UTC(2000, 0, 1)); s.R.fill(0); s.R[0x0E] = 0x1C; s.R[0x0F] = 0x88; } // sin pila: se pierde la hora
+      else { const s = st(); if (s.last != null) s.base = s.last; s.cyc0 = 0; } // con pila la hora sigue donde estaba
+    },
+    update(){ return tick(); },
+    now: cur,
+  };
+}
+
 export const KITS8 = {
+  ds3231: {
+    label: 'Reloj DS3231 + EEPROM AT24C32 (ZS-042)', prefix: 'RTC', cat: 'Módulos',
+    terms: { ...D31.terms, ...D31B.terms }, nets: () => [['SCL', 'SCL2'], ['SDA', 'SDA2'], ['VCC', 'VCC2'], ['GND', 'GND2']],
+    box: [-94, -60, 188, 120], props: () => ({ temp: 24, bat: true, eeaddr: 0x57, ee: '' }),
+    controls: [{ prop: 'temp', label: 'Temperatura del chip', min: -40, max: 85, step: 0.25, unit: '°C' }],
+    checks: [{ prop: 'bat', label: 'Pila CR2032 colocada (guarda la hora)' }],
+    options: [{ prop: 'eeaddr', label: 'Dirección de la EEPROM (puentes A0–A2)', values: [0x57, 0x56, 0x55, 0x54, 0x53, 0x52, 0x51, 0x50].map(a => [a, `0x${a.toString(16)}${a === 0x57 ? ' (sin puentes, de fábrica)' : ''}`]), num: true }],
+    svg(c){
+      let s = pcb(-78, -54, 156, 108, '#1d4fb3', '#123478') + hole(-62, -40) + hole(62, 40) + hole(-62, 40);
+      s += `<circle cx="10" cy="20" r="36" fill="#1a1a1a" opacity=".55"/>`; // portapila CR2032 (debajo)
+      s += `<rect x="-36" y="-40" width="58" height="34" rx="2" fill="#18191b"/>` + Array.from({ length: 8 }, (_, i) => `<rect x="${-32 + i * 7}" y="-45" width="3" height="5" fill="#c8ccd0"/><rect x="${-32 + i * 7}" y="-6" width="3" height="5" fill="#c8ccd0"/>`).join('');
+      s += tiny(-7, -25, 'DS3231SN', '#c9c9c9', 'middle', 6) + tiny(-7, -16, '±2ppm', '#888', 'middle', 5);
+      s += `<rect x="18" y="8" width="26" height="18" rx="1" fill="#18191b"/>` + Array.from({ length: 4 }, (_, i) => `<rect x="${20 + i * 6}" y="4" width="3" height="4" fill="#c8ccd0"/><rect x="${20 + i * 6}" y="26" width="3" height="4" fill="#c8ccd0"/>`).join('') + tiny(31, 19, '24C32', '#c9c9c9', 'middle', 5.5);
+      s += `<rect x="30" y="-36" width="10" height="5" fill="#2a2a2a"/><rect x="28" y="-36" width="3" height="5" fill="#c0392b"/>` + tiny(54, -38, 'ZS-042', '#e9eefc', 'middle', 6);
+      s += smdLed(`data-d31led="${c.id}"`, -50, 4, '#ff3b30') + tiny(-50, -4, 'POWER', '#e9eefc', 'middle', 5);
+      s += `<rect x="-58" y="18" width="10" height="5" fill="#c9a36a"/><rect x="-44" y="18" width="10" height="5" fill="#c9a36a"/>` + tiny(56, 44, 'A0 A1 A2', '#e9eefc', 'middle', 5);
+      return s + D31.svg + D31B.svg + label(0, -60, `${c.name} · <tspan data-d31="${c.id}">--:--:--</tspan>`);
+    },
+    elec(c, T, E){
+      E.res(T('VCC'), T('GND'), 3000); E.res(T('SDA'), T('VCC'), 4700); E.res(T('SCL'), T('VCC'), 4700); // pull-ups del módulo
+      const v = Math.max(0, E.prev(T('VCC')) - E.prev(T('GND')));
+      E.src(T('SQW'), T('GND'), c._sqw === 0 ? 0 : v, 4700); E.src(T('32K'), T('GND'), c._k32 === 0 ? 0 : v, 4700); // salidas de drenador abierto con 4,7 kΩ
+    },
+    device: ds3231Device,
+    readout(c){
+      let t = 'Reloj de alta precisión con pila: sigue la hora aunque se reinicie o se apague el Arduino.';
+      const ee = c._ee ? `EEPROM: ${c._eeW || 0} escrituras` : 'EEPROM AT24C32 (4 KB) en 0x' + c.props.eeaddr.toString(16);
+      return `${t}\nI2C: SDA→A4, SCL→A5 (Mega 20/21). Reloj en 0x68, ${ee}.\nTemperatura interna ${fmt(c.props.temp, 2)} °C.${c.props.bat ? '' : '\nSin pila: la hora vuelve a 01/01/2000 al reiniciar y lostPower() da verdadero.'}\nLibrería RTClib (RTC_DS3231 rtc; rtc.begin(); rtc.now()).`;
+    },
+    render(c, k){
+      const d = k.dev && k.dev(c), t = k.q(`[data-d31="${c.id}"]`);
+      if (d && d.now && t && c._d31) { const v = new Date(d.now()); t.textContent = `${pad2(v.getUTCDate())}/${pad2(v.getUTCMonth() + 1)} ${pad2(v.getUTCHours())}:${pad2(v.getUTCMinutes())}:${pad2(v.getUTCSeconds())}`; }
+      glowAttr(k.q(`[data-d31led="${c.id}"]`), k.powered('VCC', 'GND', 2.3));
+      if (c._ee && c._eeVer !== c._eeSaved) { let b = ''; for (let i = 0; i < EE_SIZE; i += 0x800) b += String.fromCharCode(...c._ee.subarray(i, i + 0x800)); c.props.ee = c._ee.every(x => x === 0xFF) ? '' : btoa(b); c._eeSaved = c._eeVer; k.save(); }
+      if (k.running && !k.powered('VCC', 'GND', 2.3)) k.warn(`${c.name}: sin alimentación. VCC a 5V y GND a GND.`);
+      else if (k.running && (k.wired('SDA') || k.wired('SCL')) && !(k.onBoard('SDA', k.board.i2c.sda) && k.onBoard('SCL', k.board.i2c.scl))) k.warn(`${c.name}: SDA va a ${k.board.i2c.sda} y SCL a ${k.board.i2c.scl}.`);
+    },
+  },
   tcs3200: {
     label: 'Sensor de color TCS3200 / TCS230', prefix: 'COL', cat: 'Sensores',
     terms: { ...TCL.terms, ...TCR.terms }, box: [-80, -68, 160, 122], props: () => ({ r: 220, g: 40, b: 40, leds: true }),

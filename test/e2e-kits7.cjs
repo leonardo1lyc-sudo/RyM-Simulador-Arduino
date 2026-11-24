@@ -73,10 +73,33 @@ const OUT = process.env.SHOTS || '.';
   await p.waitForTimeout(300); check(await p.evaluate(() => __banco.io.pins[13].val) === 1, 'El botón A prende el LED 13');
   await shot('k7-rf433');
 
+  // Reloj DS3231 + EEPROM AT24C32 (RTClib)
+  await ex('reloj3231');
+  s = await waitSerial(/Arranques guardados en la EEPROM: \d+\s*\n/);
+  check(/Arranques guardados en la EEPROM: 1\b/.test(s) && !/perdio/.test(s), 'DS3231 responde y la EEPROM cuenta el primer arranque');
+  await p.waitForTimeout(1200);
+  const lcd4 = () => p.evaluate(() => { const m = [...__banco.lcdModels.values()][0]; let t = ''; for (let r = 0; r < 4; r++) { for (let c = 0; c < 20; c++) t += String.fromCharCode(m.charAt(c, r)); t += '\n'; } return t; });
+  let txt4 = await lcd4(); const pc = new Date(); const hh = String(pc.getHours()).padStart(2, '0');
+  check(new RegExp('^' + hh + ':\\d\\d:\\d\\d', 'm').test(txt4) && /Temp: 24\.00 C/.test(txt4), 'LCD 20x4 muestra la hora de la PC y la temperatura: ' + JSON.stringify(txt4));
+  await shot('k7-ds3231');
+  // poner el reloj en el segundo 27 y esperar la alarma del segundo 30
+  await p.evaluate(() => { const c = __banco.state.comps.find(c => c.type === 'ds3231'); const d = __banco.simDevs.get(c.id); const now = d.now(); c._d31.base += (Math.floor(now / 60000) * 60000 + 27000) - now; });
+  s = await waitSerial(/Alarma a las \d\d:\d\d:\d\d\s*\n/, 8000);
+  check(/Alarma a las \d\d:\d\d:3[01]/.test(s), 'Alarma 1 por SQW en el segundo 30: ' + (s.match(/Alarma[^\n]*/) || ['—'])[0]);
+  await p.waitForTimeout(300); check(await p.evaluate(() => __banco.io.pins[13].val) === 1, 'La alarma prende el LED 13');
+  // reiniciar: la hora sigue (pila) y la EEPROM recuerda
+  await p.evaluate(() => { document.querySelector('#serialOut').textContent = ''; __banco.compileAndRun(); }); await waitRun();
+  s = await waitSerial(/Arranques guardados en la EEPROM: \d+\s*\n/);
+  check(/Arranques guardados en la EEPROM: 2\b/.test(s) && !/perdio/.test(s), 'Tras reiniciar la EEPROM cuenta 2 arranques y la hora se conserva');
+  // sin pila: lostPower() y se ajusta a la hora de compilación
+  await setProp(1, 'bat', false); await p.evaluate(() => { document.querySelector('#serialOut').textContent = ''; __banco.compileAndRun(); }); await waitRun();
+  s = await waitSerial(/Arranques/);
+  check(/perdio la hora/.test(s), 'Sin pila, lostPower() avisa que se perdió la hora');
+
   // Arduino casero
   await ex('casero'); await p.waitForTimeout(2500);
   let seen = new Set(); for (let i = 0; i < 12; i++) { seen.add((await led(9)) > 0.002); await p.waitForTimeout(150); }
-  check(seen.size === 2, 'ATmega328P suelto parpadea el LED en la pata 19');
+  check(seen.size === 2, 'ATmega328P suelto parpadea el LED en la pata 19 (' + (await status()).slice(0, 30) + ' ' + JSON.stringify(await p.evaluate(() => document.querySelector('#warnings').textContent)) + ')');
   await shot('k7-casero');
   await p.evaluate(() => { const st = __banco.state; st.wires = st.wires.filter(w => !/C4:/.test(w.a + w.b)); __banco.applyState(st); });
   await waitRun(); await p.waitForTimeout(1500);

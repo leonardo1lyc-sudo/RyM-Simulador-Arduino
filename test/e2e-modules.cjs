@@ -14,7 +14,7 @@ const OUT = process.env.SHOTS || '.';
   const prop = (type, k, v) => p.evaluate(([t, k, v]) => { const c = __banco.state.comps.find(c => c.type === t); c.props[k] = v; __banco.refresh(); }, [type, k, v]);
   const shot = n => p.screenshot({ path: path.join(OUT, n + '.png') });
   let ok = true; const check = (c, msg) => { console.log((c ? 'OK   ' : 'FAIL ') + msg); if (!c) ok = false; };
-  const last = s => s.trim().split('\n').pop();
+  const last = s => { const l = s.split('\n'); if (!s.endsWith('\n')) l.pop(); return (l.filter(x => x.trim()).pop() || '').trim(); }; // última línea completa
 
   await ex('ultrasonido'); await p.waitForTimeout(1200);
   let s = last(await serial()); check(/Distancia: (29|30|31)\.\d cm/.test(s), 'HC-SR04 30 cm: ' + s);
