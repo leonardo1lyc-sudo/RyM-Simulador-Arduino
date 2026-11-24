@@ -393,3 +393,15 @@ select option{background:var(--panel);color:var(--ink)}
 .rym-dlg .spacer{flex:1}
 .toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:30;max-width:min(640px,90%);background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.25);white-space:pre-line}
 .toast b{display:block;margin-bottom:2px}
+
+/* edición de cables: codos y puntos para agregar codos */
+.wpt{fill:#fff;stroke:var(--accent,#1f5fd1);stroke-width:2.5;cursor:move}
+.wpt:hover{fill:var(--accent,#1f5fd1)}
+.wmid{fill:var(--accent,#1f5fd1);fill-opacity:.35;stroke:#fff;stroke-width:1.5;cursor:copy}
+.wmid:hover{fill-opacity:.9}
+#props .note{font-size:12px;color:var(--muted,#667);margin:6px 0 2px;line-height:1.35}
+.logo .social{display:flex;gap:6px;align-items:center;margin-top:3px}
+.logo .social[hidden],.logo .social a[hidden]{display:none}
+.logo .social a{display:grid;place-items:center;width:22px;height:22px;border-radius:7px;color:var(--muted);background:var(--panel2);border:1px solid var(--line)}
+.logo .social a:hover{color:var(--accent);border-color:var(--accent)}
+.logo .social .i{width:14px;height:14px}

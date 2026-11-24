@@ -18,6 +18,7 @@ import { createZoom, WORLD } from './zoom.js';
 import { initLayout } from './layout.js';
 import { listLibraries, saveLibrary, deleteLibrary, importZip, importFiles } from './libs.js';
 import { readProjectFiles, parseDiagram, exportProject } from './project.js';
+import { BRAND } from './brand.js';
 
 const $ = s => document.querySelector(s);
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -37,7 +38,7 @@ function drawBoard(){
 function setBoard(id){ BRD = BOARDS[id] || BOARDS.uno; BPIN = BRD.terms; NP = BRD.pins.length; pinCache.clear(); drawBoard(); }
 
 /* ======================= Estado del editor ======================= */
-let state = null, sel = null, drawing = null, drag = null;
+let state = null, sel = null, drawing = null, drag = null, lastPt = { key: '', t: 0 };
 const compById = id => state.comps.find(c => c.id === id);
 function rot(x, y, r){ switch (((r % 360) + 360) % 360) { case 90: return [-y, x]; case 180: return [-x, -y]; case 270: return [y, -x]; default: return [x, y]; } }
 const termsOf = c => { const d = TYPES[c.type]; return d.activeTerms ? d.activeTerms(c) : Object.keys(d.terms); }; // terminales en uso (tiras de pines de largo variable)
@@ -630,16 +631,33 @@ function wirePath(a, pts, b){
   if (!pts.length) { const dist = Math.hypot(b.x - a.x, b.y - a.y); const k = Math.min(90, dist * 0.4 + 18); return `M${a.x} ${a.y} C${a.x + a.dx * k} ${a.y + a.dy * k} ${b.x + b.dx * k} ${b.y + b.dy * k} ${b.x} ${b.y}`; }
   return 'M' + [a, ...pts.map(([x, y]) => ({ x, y })), b].map(p => `${p.x} ${p.y}`).join(' L');
 }
+function wirePoly(w){ const a = termPos(w.a), b = termPos(w.b); return [a, ...w.pts.map(([x, y]) => ({ x, y })), b]; }
+function segDist(p, a, b){ const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy; const t = L ? clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / L, 0, 1) : 0; return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy); }
+function nearestSeg(w, pt){ const P = wirePoly(w); let best = 0, bd = Infinity; for (let i = 0; i + 1 < P.length; i++) { const d = segDist(pt, P[i], P[i + 1]); if (d < bd) { bd = d; best = i; } } return best; }
+function orthoWire(w){ // acomoda el cable en ángulo recto: sale del terminal, va por el medio y llega derecho
+  const a = termPos(w.a), b = termPos(w.b); const ax = a.x + a.dx * 20, ay = a.y + a.dy * 20, bx = b.x + b.dx * 20, by = b.y + b.dy * 20;
+  const pts = [];
+  if (a.dy) { pts.push([a.x, ay]); if (b.dy) { const my = snap((ay + by) / 2); pts.push([a.x, my], [b.x, my]); } else pts.push([bx, ay]); }
+  else { pts.push([ax, a.y]); if (b.dx) { const mx = snap((ax + bx) / 2); pts.push([mx, a.y], [mx, b.y]); } else pts.push([ax, by]); }
+  if (b.dy) pts.push([b.x, by]); else pts.push([bx, b.y]);
+  w.pts = pts.filter((p, i, arr) => !i || p[0] !== arr[i - 1][0] || p[1] !== arr[i - 1][1]);
+}
 function renderWires(){
-  let s = '';
+  let s = '', handles = '';
   for (const w of state.wires) {
     const a = termPos(w.a), b = termPos(w.b); if (!a || !b) continue;
     const d = wirePath(a, w.pts, b); const isSel = sel && sel.kind === 'wire' && sel.id === w.id;
     s += `<path class="wire-shadow" d="${d}"/><path class="wire${isSel ? ' sel' : ''}" d="${d}" stroke="${w.color}"/><path class="wire-hit" data-wire="${w.id}" d="${d}"><title>${esc(termLabel(w.a))} ↔ ${esc(termLabel(w.b))}</title></path>`;
     s += `<circle cx="${a.x}" cy="${a.y}" r="3.5" fill="${w.color}" stroke="rgba(0,0,0,.4)"/><circle cx="${b.x}" cy="${b.y}" r="3.5" fill="${w.color}" stroke="rgba(0,0,0,.4)"/>`;
+    if (isSel) handles = (() => { let s = ''; // codos arrastrables (doble clic los quita) y puntos "+" para agregar uno en cada tramo
+      const P = [a, ...w.pts.map(([x, y]) => ({ x, y })), b];
+      for (let i = 0; i + 1 < P.length; i++) { const mx = (P[i].x + P[i + 1].x) / 2, my = (P[i].y + P[i + 1].y) / 2; if (Math.hypot(P[i + 1].x - P[i].x, P[i + 1].y - P[i].y) > 36) s += `<circle class="wmid" data-wmid="${w.id}:${i}" cx="${mx}" cy="${my}" r="5"><title>Arrastra para agregar un codo</title></circle>`; }
+      w.pts.forEach(([x, y], i) => { s += `<circle class="wpt" data-wpt="${w.id}:${i}" cx="${x}" cy="${y}" r="6.5"><title>Arrastra para mover el codo · doble clic lo quita</title></circle>`; });
+      return s; })();
   }
+
   if (drawing) { const a = termPos(drawing.from); const c = drawing.cur || a; s += `<path class="preview" d="${wirePath(a, drawing.pts, { x: c.x, y: c.y, dx: 0, dy: 0 })}"/>`; }
-  $('#wireLayer').innerHTML = s;
+  $('#wireLayer').innerHTML = s; $('#wptLayer').innerHTML = handles; // codos por encima de cables y terminales
 }
 
 /* ======================= Panel de propiedades ======================= */
@@ -653,7 +671,7 @@ function updateProps(force){
   if (sel.kind === 'wire') {
     const w = state.wires.find(w => w.id === sel.id); if (!w) { sel = null; box.hidden = true; return; }
     if (force || propsKey !== key) {
-      box.innerHTML = `<h4>Cable <span>${esc(termLabel(w.a))} ↔ ${esc(termLabel(w.b))}</span></h4><div class="swatches">${WIRE_COLORS.map(c => `<button type="button" data-wcolor="${c}" class="${c === w.color ? 'on' : ''}" style="background:${c}" aria-label="Color ${c}"></button>`).join('')}</div><div class="row"><button class="btn small danger" data-act="del">Eliminar cable</button></div>`;
+      box.innerHTML = `<h4>Cable <span>${esc(termLabel(w.a))} ↔ ${esc(termLabel(w.b))}</span></h4><div class="swatches">${WIRE_COLORS.map(c => `<button type="button" data-wcolor="${c}" class="${c === w.color ? 'on' : ''}" style="background:${c}" aria-label="Color ${c}"></button>`).join('')}</div><p class="note">Arrastra el cable para doblarlo y acomodarlo. Los codos se mueven arrastrándolos; doble clic en un codo lo quita.</p><div class="row"><button class="btn small" data-act="wortho" title="Rutear el cable con tramos horizontales y verticales">┘ Ángulo recto</button><button class="btn small" data-act="wclear" title="Quitar todos los codos">Quitar codos</button></div><div class="row"><button class="btn small danger" data-act="del">Eliminar cable</button></div>`;
       box.hidden = false; propsKey = key;
     }
     return;
@@ -721,6 +739,13 @@ function setPressed(c, pressed){
 svg.addEventListener('pointerdown', e => {
   const pt = svgPt(e); const t = e.target;
   const term = t.closest('[data-term]'), ctrl = t.closest('[data-ctrl]'), comp = t.closest('[data-comp]'), wire = t.closest('[data-wire]');
+  const wpt = t.closest('[data-wpt]'), wmid = t.closest('[data-wmid]');
+  if (!drawing && (wpt || wmid)) { // codos del cable seleccionado
+    const [wid, i] = (wpt || wmid).dataset[wpt ? 'wpt' : 'wmid'].split(':').map(Number); const w = state.wires.find(w => w.id === wid);
+    if (w && wpt && lastPt.key === wpt.dataset.wpt && performance.now() - lastPt.t < 400) { w.pts.splice(i, 1); lastPt.key = ''; renderWires(); scheduleSave(); e.preventDefault(); return; } // doble clic: quita el codo
+    if (w) { if (wmid) { w.pts.splice(i, 0, [snap(pt.x), snap(pt.y)]); renderWires(); } drag = { kind: 'wpt', w, idx: i, moved: !!wmid, key: wpt ? wpt.dataset.wpt : '' }; svg.setPointerCapture(e.pointerId); }
+    e.preventDefault(); return;
+  }
   if (term) {
     const k = term.dataset.term;
     if (!drawing) { drawing = { from: k, pts: [], cur: pt }; sel = null; updateProps(true); }
@@ -752,7 +777,7 @@ svg.addEventListener('pointerdown', e => {
     e.preventDefault(); return;
   }
   if (comp) { const c = compById(+comp.dataset.comp); drag = { kind: 'move', c, ox: pt.x - c.x, oy: pt.y - c.y, moved: false, riders: TYPES[c.type].breadboard ? ridersOf(c) : [] }; svg.setPointerCapture(e.pointerId); select({ kind: 'comp', id: c.id }); return; }
-  if (wire) { select({ kind: 'wire', id: +wire.dataset.wire }); return; }
+  if (wire) { const w = state.wires.find(w => w.id === +wire.dataset.wire); select({ kind: 'wire', id: w.id }); drag = { kind: 'wire', w, start: pt, seg: nearestSeg(w, pt), orig: w.pts.map(p => [...p]), mode: null }; svg.setPointerCapture(e.pointerId); return; }
   if (sel) select(null);
 });
 svg.addEventListener('pointermove', e => {
@@ -765,6 +790,20 @@ svg.addEventListener('pointermove', e => {
       for (const r of drag.riders) { r.x += nx - drag.c.x; r.y += ny - drag.c.y; q(`[data-comp="${r.id}"]`).setAttribute('transform', `translate(${r.x},${r.y}) rotate(${r.rot})`); } // lo que está enchufado se mueve con la protoboard
       drag.c.x = nx; drag.c.y = ny; drag.moved = true; q(`[data-comp="${drag.c.id}"]`).setAttribute('transform', `translate(${nx},${ny}) rotate(${drag.c.rot})`); renderTerms(); renderWires();
     }
+  } else if (drag.kind === 'wpt') {
+    const p = [clamp(snap(pt.x), WORLD.x0, WORLD.x1), clamp(snap(pt.y), WORLD.y0, WORLD.y1)], o = drag.w.pts[drag.idx];
+    if (o && (o[0] !== p[0] || o[1] !== p[1])) { drag.w.pts[drag.idx] = p; drag.moved = true; renderWires(); }
+  } else if (drag.kind === 'wire') {
+    const dx = pt.x - drag.start.x, dy = pt.y - drag.start.y;
+    if (!drag.mode) {
+      if (Math.hypot(dx, dy) < 5) return;
+      const n = drag.orig.length, i = drag.seg;
+      if (i >= 1 && i + 1 <= n) drag.mode = 'seg'; // tramo entre dos codos: se mueve entero
+      else { drag.mode = 'pt'; drag.w.pts.splice(i, 0, [snap(drag.start.x), snap(drag.start.y)]); drag.idx = i; drag.orig = drag.w.pts.map(p => [...p]); }
+    }
+    if (drag.mode === 'seg') { const i = drag.seg; for (const k of [i - 1, i]) drag.w.pts[k] = [snap(drag.orig[k][0] + dx), snap(drag.orig[k][1] + dy)]; }
+    else drag.w.pts[drag.idx] = [snap(drag.orig[drag.idx][0] + dx), snap(drag.orig[drag.idx][1] + dy)];
+    drag.moved = true; renderWires();
   } else if (drag.kind === 'joy') {
     const c = drag.c; let [lx, ly] = rot(pt.x - c.x, pt.y - c.y, -c.rot); lx += 4;
     let x = lx / 18, y = -ly / 18; const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
@@ -772,6 +811,7 @@ svg.addEventListener('pointermove', e => {
   } else if (drag.kind === 'pot') { drag.c.props.pos = clamp(drag.pos + ((drag.y - pt.y) + (pt.x - drag.x)) / 160, 0, 1); elecDirty = true; dispDirty = true; const r = $('#pPos'); if (r) r.value = Math.round(drag.c.props.pos * 1000); }
 });
 const endDrag = () => { if (!drag) return; if (drag.kind === 'boot') { bootPressed = false; elecDirty = true; dispDirty = true; drag = null; return; } if (drag.kind === 'btn' && !drag.c.props.latch) setPressed(drag.c, false);
+  if (drag.kind === 'wpt') lastPt = drag.moved ? { key: '', t: 0 } : { key: drag.key, t: performance.now() }; // un clic sin mover: puede ser el primero de un doble clic
   if (drag.kind === 'key') pressKey(drag.c, -1);
   if (drag.kind === 'joy') { drag.c.props.x = 0; drag.c.props.y = 0; elecDirty = true; dispDirty = true; } // el resorte lo centra
   if (drag.kind === 'joybtn') { drag.c.props.pressed = false; elecDirty = true; dispDirty = true; }
@@ -804,6 +844,7 @@ $('#props').addEventListener('click', e => {
   const b = e.target.closest('[data-act],[data-wcolor]'); if (!b) return;
   if (b.dataset.act === 'del') deleteSel();
   else if (b.dataset.act === 'rot') rotateSel();
+  else if (b.dataset.act === 'wortho' || b.dataset.act === 'wclear') { const w = state.wires.find(w => w.id === sel.id); if (b.dataset.act === 'wortho') orthoWire(w); else w.pts = []; renderWires(); scheduleSave(); }
   else if (b.dataset.wcolor) { const w = state.wires.find(w => w.id === sel.id); w.color = b.dataset.wcolor; renderWires(); updateProps(true); scheduleSave(); }
 });
 $('#props').addEventListener('change', e => { if (e.target.dataset.ctl && sel && sel.kind === 'comp') renderComps(); });
@@ -1139,6 +1180,13 @@ $('#saveJson').addEventListener('click', () => {
 });
 exSel.addEventListener('change', e => { if (e.target.value) { applyState(exampleState(e.target.value)); e.target.value = ''; } });
 
+/* Redes de la empresa (web/src/brand.js) */
+(() => {
+  const ig = String(BRAND.instagram || '').replace(/^@/, '').trim(), wa = String(BRAND.whatsapp || '').replace(/\D/g, '');
+  if (ig) { const a = $('#igLink'); a.href = 'https://instagram.com/' + encodeURIComponent(ig); a.title = `Instagram de ${BRAND.empresa} (@${ig})`; a.hidden = false; }
+  if (wa) { const a = $('#waLink'); a.href = `https://wa.me/${wa}` + (BRAND.mensajeWhatsapp ? '?text=' + encodeURIComponent(BRAND.mensajeWhatsapp) : ''); a.hidden = false; }
+  $('#social').hidden = !(ig || wa);
+})();
 /* ======================= Arranque ======================= */
 initLayout();
 renderLibrary();

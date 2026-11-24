@@ -96,6 +96,36 @@ const OUT = process.env.SHOTS || '.';
   s = await waitSerial(/Arranques/);
   check(/perdio la hora/.test(s), 'Sin pila, lostPower() avisa que se perdió la hora');
 
+  // Cables: doblar, mover codos, ángulo recto y quitar codos
+  await p.evaluate(() => __banco.applyState(__banco.exampleState('blink'), false)); await p.waitForTimeout(500);
+  const wid = await p.evaluate(() => __banco.state.wires[0].id);
+  const onWire = (id, f = 0.5) => p.evaluate(([id, f]) => { const el = document.querySelector(`[data-wire="${id}"]`); const L = el.getTotalLength(); const q = el.getPointAtLength(L * f); const m = el.getScreenCTM(); return [q.x * m.a + q.y * m.c + m.e, q.x * m.b + q.y * m.d + m.f]; }, [id, f]);
+  const dragMouse = async ([x, y], dx, dy) => { await p.mouse.move(x, y); await p.mouse.down(); for (let i = 1; i <= 8; i++) await p.mouse.move(x + dx * i / 8, y + dy * i / 8); await p.mouse.up(); await p.waitForTimeout(150); };
+  const pts = () => p.evaluate(id => JSON.stringify(__banco.state.wires.find(w => w.id === id).pts), wid);
+  await dragMouse(await onWire(wid), 0, 60);
+  let P = JSON.parse(await pts());
+  check(P.length === 1, 'Arrastrar un cable le agrega un codo: ' + JSON.stringify(P));
+  const hp = await p.evaluate(() => { const el = document.querySelector('[data-wpt]'); const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+  await dragMouse(hp, 40, 0);
+  const P2 = JSON.parse(await pts());
+  check(P2.length === 1 && P2[0][0] > P[0][0], 'El codo se mueve arrastrándolo: ' + JSON.stringify(P2));
+  await p.click('[data-act="wortho"]'); await p.waitForTimeout(150);
+  const P3 = JSON.parse(await pts());
+  const all = await p.evaluate(id => { const el = document.querySelector(`[data-wire="${id}"]`); return el.getAttribute('d'); }, wid);
+  const xy = all.replace(/^M/, '').split(' L').map(s => s.trim().split(/\s+/).map(Number));
+  check(P3.length >= 2 && xy.every((q, i) => !i || q[0] === xy[i - 1][0] || q[1] === xy[i - 1][1]), 'Ángulo recto: todos los tramos son horizontales o verticales (' + P3.length + ' codos)');
+  await shot('k7-cables');
+  // mover un tramo entre dos codos lo traslada entero
+  const segPt = await p.evaluate(id => { const w = __banco.state.wires.find(w => w.id === id); return w.pts.length; }, wid);
+  if (segPt >= 2) { const before = JSON.parse(await pts()); await dragMouse(await onWire(wid, 0.5), 20, 20); const after = JSON.parse(await pts()); check(after.length === before.length && JSON.stringify(after) !== JSON.stringify(before), 'Arrastrar un tramo entre codos lo mueve sin agregar codos'); }
+  const h1 = await p.evaluate(() => { const el = document.querySelector('[data-wpt]'); const r = el.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; });
+  const n0 = JSON.parse(await pts()).length; await p.mouse.dblclick(h1[0], h1[1]); await p.waitForTimeout(150);
+  check(JSON.parse(await pts()).length === n0 - 1, 'Doble clic en un codo lo quita (' + n0 + ' → ' + await pts() + ')');
+  await p.click('[data-act="wclear"]'); await p.waitForTimeout(100);
+  check((await pts()) === '[]', 'Quitar codos vuelve al cable curvo');
+  const savedLS = await p.evaluate(() => new Promise(r => setTimeout(() => r(localStorage.getItem('banco-uno-v2') || ''), 600)));
+  check(savedLS.includes('"pts"'), 'Los codos se guardan con el proyecto');
+
   // Arduino casero
   await ex('casero'); await p.waitForTimeout(2500);
   let seen = new Set(); for (let i = 0; i < 12; i++) { seen.add((await led(9)) > 0.002); await p.waitForTimeout(150); }

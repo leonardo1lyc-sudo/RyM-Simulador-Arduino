@@ -51,7 +51,7 @@ export function createZoom(svg, { isBusy = () => false, onChange = () => {} } = 
   let space = false, pan = null; const touches = new Map(); let pinch = null;
   addEventListener('keydown', e => { if (e.code === 'Space' && !e.target.closest('textarea,input,select,button,.cm-editor')) { space = true; svg.classList.add('pan-ready'); e.preventDefault(); } });
   addEventListener('keyup', e => { if (e.code === 'Space') { space = false; svg.classList.remove('pan-ready'); } });
-  const empty = t => !t.closest('[data-term],[data-ctrl],[data-comp],[data-wire]');
+  const empty = t => !t.closest('[data-term],[data-ctrl],[data-comp],[data-wire],[data-wpt],[data-wmid]');
   svg.addEventListener('pointerdown', e => {
     if (e.pointerType === 'touch') {
       touches.set(e.pointerId, { x: e.clientX, y: e.clientY });

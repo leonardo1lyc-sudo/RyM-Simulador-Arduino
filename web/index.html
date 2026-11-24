@@ -15,7 +15,7 @@
 <header class="top">
   <div class="logo">
     <span class="mark rym" aria-hidden="true"><svg width="34" height="34" viewBox="0 0 64 64"><defs><linearGradient id="rymG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16a3a0"/><stop offset="1" stop-color="#1f5fd1"/></linearGradient></defs><rect x="2" y="2" width="60" height="60" rx="14" fill="url(#rymG)"/><path d="M8 50h8l4-4h24l4 4h8" stroke="#ffffff" stroke-opacity=".35" stroke-width="2" fill="none"/><circle cx="8" cy="50" r="2.2" fill="#ffd27a"/><circle cx="56" cy="50" r="2.2" fill="#ffd27a"/><text x="32" y="38" text-anchor="middle" font-family="Inter,Arial,sans-serif" font-weight="800" font-size="25" fill="#fff" letter-spacing="-1">R<tspan font-size="19" fill="#ffd27a">y</tspan>M</text></svg></span>
-    <div><h1>RyM Simu</h1><small>Simulador de Arduino y ESP32 · emulación AVR real</small></div>
+    <div><h1>RyM Simu</h1><small>Simulador de Arduino y ESP32 · emulación AVR real</small><span class="social" id="social" hidden><a id="igLink" target="_blank" rel="noopener" title="Instagram de RyM" aria-label="Instagram de RyM" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg></a><a id="waLink" target="_blank" rel="noopener" title="WhatsApp de RyM" aria-label="WhatsApp de RyM" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 20.5l1.3-4.2A8.5 8.5 0 1 1 8 19.4z"/><path d="M9 8.5c0 3.5 3 6.5 6.5 6.5l1.2-1.6-2-1-1 .9c-1.2-.5-2.3-1.6-2.8-2.8l.9-1-1-2z"/></svg></a></span></div>
   </div>
   <div class="project">
     <label class="selwrap" title="Placa"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg><select id="boardSel" aria-label="Placa"></select></label>
@@ -58,7 +58,7 @@
           <pattern id="dotsBig" width="100" height="100" patternUnits="userSpaceOnUse"><rect width="100" height="100" fill="url(#dots)"/><circle cx="50" cy="50" r="1.8" class="gdot big"/></pattern>
         </defs>
         <rect id="gridBg" x="-6000" y="-6000" width="14000" height="14000" fill="url(#dotsBig)"/>
-        <g id="boardLayer"></g><g id="compLayer"></g><g id="wireLayer"></g><g id="termLayer"></g>
+        <g id="boardLayer"></g><g id="compLayer"></g><g id="wireLayer"></g><g id="termLayer"></g><g id="wptLayer"></g>
       </svg>
       <div class="readouts simstat">
         <span class="chip status" id="status">Detenido</span>
