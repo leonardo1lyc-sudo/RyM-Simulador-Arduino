@@ -1,4 +1,4 @@
-// Servidor de Banco Uno: sirve la web y compila sketches.
+// Servidor de RyM Simu: sirve la web y compila sketches.
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -72,6 +72,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Banco Uno escuchando en http://localhost:${PORT}`);
+  console.log(`RyM Simu escuchando en http://localhost:${PORT}`);
   buildCore().then(() => console.log('Núcleo de Arduino AVR compilado y en caché.')).catch(e => console.error('No se pudo compilar el núcleo:', e.stderr || e.message));
 });

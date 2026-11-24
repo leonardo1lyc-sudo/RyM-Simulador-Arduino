@@ -36,6 +36,15 @@ fetch milesburton/Arduino-Temperature-Control-Library libraries/DallasTemperatur
 fetch arduino-libraries/Stepper libraries/Stepper cee62bb4de4519f05b68f2a5732cd20e2f324568
 # tanda 4: tiras y aros LED inteligentes (WS2812)
 fetch adafruit/Adafruit_NeoPixel libraries/Adafruit_NeoPixel fd742876af408a883b00586763c34e058cf7e63a
+# tanda 5: NFC, microSD, MP3, IMU, LCD I2C, RF 433 MHz y TFT
+fetch johnrickman/LiquidCrystal_I2C libraries/LiquidCrystal_I2C 738765e388816fb2a687d40436cd2604febce1b1
+fetch adafruit/Adafruit-PN532 libraries/Adafruit_PN532 bf9f3f31961474fdbca23cb57d604c7f27269baf
+fetch arduino-libraries/SD libraries/SD 32f14bd592b4af168a5bf165cccdf63b13031d96
+fetch DFRobot/DFRobotDFPlayerMini libraries/DFRobotDFPlayerMini 47c014938318f99f5b48194b329ef48931d1d175
+fetch adafruit/Adafruit_MPU6050 libraries/Adafruit_MPU6050 502a7caccda630a151dfb03ecbdd4b8452809ef7
+fetch ElectronicCats/mpu6050 libraries/MPU6050 8beccc728c30fc0f557d1f24badd86369123b1ba
+fetch sui77/rc-switch libraries/RCSwitch 436a74b03f3dc17a29ee327af29d5a05d77f94b9
+fetch adafruit/Adafruit_ILI9341 libraries/Adafruit_ILI9341 f8052f6f9a2212e24a41ee8c69df2d9638de622c
 # ESP32 en modo compatible: copia parcheada del núcleo AVR
 node scripts/setup-esp32-core.mjs
 echo "vendor/ listo"

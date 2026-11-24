@@ -376,4 +376,48 @@ const esp32c3 = espDevkit({
   ['GND.6', 'D21', 'D20', 'GND.7', 'D9', 'D8', 'GND.8', 'D7', 'D6', 'D5', 'D4', 'GND.9', 'D18', 'D19', 'GND.10'],
   { 21: 'TX', 20: 'RX' });
 
-export const BOARDS = { uno, nano, mega, esp32, esp32cam, esp32s3, esp32c3 };
+
+/* =========================================================================
+   ATmega328P suelto en su zócalo (Arduino casero / «Arduino en protoboard»)
+   Se alimenta desde afuera (VCC y AVCC a 5 V, p. ej. con un 7805), necesita el cristal de 16 MHz
+   entre XTAL1 y XTAL2 (con 22 pF a GND) y RESET a 5 V con 10 kΩ. Si falta algo, no arranca.
+   ========================================================================= */
+const DIP_PINS = ['RESET', 'D0', 'D1', 'D2', 'D3', 'D4', 'VCC', 'GND.1', 'XTAL1', 'XTAL2', 'D5', 'D6', 'D7', 'D8',
+  'D9', 'D10', 'D11', 'D12', 'D13', 'AVCC', 'AREF', 'GND.2', 'A0', 'A1', 'A2', 'A3', 'A4', 'A5'];
+const DIP_FN = { RESET: 'PC6', D0: 'PD0 RXD', D1: 'PD1 TXD', D2: 'PD2 INT0', D3: 'PD3 INT1', D4: 'PD4', VCC: 'VCC', 'GND.1': 'GND', XTAL1: 'XTAL1', XTAL2: 'XTAL2', D5: 'PD5', D6: 'PD6', D7: 'PD7', D8: 'PB0',
+  D9: 'PB1', D10: 'PB2 SS', D11: 'PB3 MOSI', D12: 'PB4 MISO', D13: 'PB5 SCK', AVCC: 'AVCC', AREF: 'AREF', 'GND.2': 'GND', A0: 'PC0', A1: 'PC1', A2: 'PC2', A3: 'PC3', A4: 'PC4 SDA', A5: 'PC5 SCL' };
+const dip328 = makeBoard({
+  id: 'dip328', name: 'ATmega328P suelto (Arduino casero)', chipName: 'ATmega328P', mcu: 'atmega328p', canvasW: 1100, standalone: true, compileAs: 'uno',
+  rect: { x: 120, y: 290, w: 330, h: 120 },
+  pins: PINS_328, firstAnalog: 14, analog: { 14: 0, 15: 1, 16: 2, 17: 3, 18: 4, 19: 5 },
+  pwm: new Set([3, 5, 6, 9, 10, 11]), pinExtra: {}, notes: NOTES_328,
+  i2c: { sda: 'A4', scl: 'A5' }, spi: { mosi: 11, sck: 13 }, uarts: [{ rx: 0, tx: 1 }],
+  nets: [['GND.1', 'GND.2']], supplies: [['RESET', 5, 40000]], keys: ['B:VCC', 'B:AVCC', 'B:XTAL1', 'B:XTAL2'],
+});
+(function(B){
+  const { x, y, w, h } = B.rect, P = 20, x0 = x + 30;
+  DIP_PINS.forEach((id, i) => {
+    if (i < 14) B.add(id, x0 + i * P, y + h + 4, 0, 1);
+    else B.add(id, x0 + (27 - i) * P, y - 4, 0, -1);
+  });
+  B.label = id => String(DIP_PINS.indexOf(id) + 1);
+  const t0 = B.title;
+  B.title = id => { const n = DIP_PINS.indexOf(id) + 1; const extra = { VCC: 'VCC: 5 V de la fuente (7805)', AVCC: 'AVCC: 5 V (alimenta el ADC; únelo a VCC)', XTAL1: 'XTAL1: cristal de 16 MHz (y 22 pF a GND)', XTAL2: 'XTAL2: cristal de 16 MHz (y 22 pF a GND)', RESET: 'RESET: 10 kΩ a 5 V; a GND reinicia', AREF: 'AREF: referencia analógica (100 nF a GND)' }[id.replace(/\.\d$/, '') === 'GND' ? 'GND' : id];
+    return `Pata ${n} · ${DIP_FN[id]} · ${extra || t0(id)}`; };
+  B.draw = () => {
+    let s = `<rect x="${x}" y="${y - 22}" width="${w}" height="${h + 44}" rx="4" fill="#26282b" stroke="#111"/>`;
+    for (const id of DIP_PINS) { const p = B.terms[id]; s += `<rect x="${p.x - 5}" y="${(p.dy < 0 ? p.y + 4 : p.y - 22)}" width="10" height="18" rx="1" fill="#0f1011"/><circle cx="${p.x}" cy="${p.dy < 0 ? p.y + 13 : p.y - 13}" r="3" fill="#c8b46a"/>`; }
+    s += `<rect x="${x + 14}" y="${y + 10}" width="${w - 28}" height="${h - 20}" rx="3" fill="#1b1c1e"/>`;
+    for (const id of DIP_PINS) { const p = B.terms[id]; s += `<rect x="${p.x - 3}" y="${p.dy < 0 ? y + 4 : y + h - 10}" width="6" height="8" fill="#bfc6c9"/>`; }
+    s += `<path d="M${x + 14} ${y + h / 2 - 9} a9 9 0 0 1 0 18" fill="#26282b"/><circle cx="${x + 30}" cy="${y + h - 26}" r="4" fill="#2c3034"/>`;
+    s += `<text x="${x + w / 2}" y="${y + h / 2 - 2}" font-family="var(--f-code)" font-size="15" fill="#9aa3a6" text-anchor="middle">ATMEGA328P-PU</text><text x="${x + w / 2}" y="${y + h / 2 + 16}" font-family="var(--f-code)" font-size="9" fill="#7c858a" text-anchor="middle">Atmel · bootloader Arduino Uno · 16 MHz</text>`;
+    for (const id of DIP_PINS) { const p = B.terms[id], n = DIP_PINS.indexOf(id) + 1, up = p.dy < 0;
+      s += `<text class="silk" font-size="7.5" x="${p.x}" y="${up ? p.y - 14 : p.y + 20}" text-anchor="middle">${n}</text>`;
+      s += `<text class="silk" font-size="8" transform="translate(${p.x + 3},${up ? p.y - 24 : p.y + 28}) rotate(-90)" text-anchor="${up ? 'start' : 'end'}">${DIP_FN[id]}</text>`; }
+    s += `<text class="silk" x="${x}" y="${y + h + 108}" font-size="10">Arduino casero: VCC y AVCC a 5 V · GND (8 y 22) · cristal 16 MHz en 9–10 con 22 pF a GND · RESET (1) con 10 kΩ a 5 V</text>`;
+    s += `<rect id="bL" width="0" height="0"/><rect id="bTX" width="0" height="0"/><rect id="bRX" width="0" height="0"/>`;
+    return s;
+  };
+})(dip328);
+
+export const BOARDS = { uno, nano, mega, dip328, esp32, esp32cam, esp32s3, esp32c3 };
