@@ -1,4 +1,4 @@
-# Genera la app Android (Trusted Web Activity) de Banco Uno: un AAB para Google Play y un APK para probar.
+# Genera la app Android (Trusted Web Activity) de RyM Simu: un AAB para Google Play y un APK para probar.
 # Los archivos quedan en la ejecución, sección "Artifacts".
 # Para firmarlos con tu llave de subida, cargá en Settings → Secrets and variables → Actions:
 #   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
@@ -47,7 +47,7 @@ jobs:
         run: keytool -printcert -jarfile app/build/outputs/apk/release/app-release.apk | grep SHA256 || true
       - uses: actions/upload-artifact@v4
         with:
-          name: banco-uno-android-${{ github.run_number }}
+          name: rym-simu-android-${{ github.run_number }}
           path: |
             android/app/build/outputs/bundle/release/*.aab
             android/app/build/outputs/apk/release/*.apk

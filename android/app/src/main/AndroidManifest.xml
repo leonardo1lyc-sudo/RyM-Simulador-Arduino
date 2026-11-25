@@ -9,7 +9,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:label="${launcherName}"
         android:supportsRtl="true"
-        android:theme="@style/Theme.BancoUno">
+        android:theme="@style/Theme.RymSimu">
 
         <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
 
@@ -17,14 +17,14 @@
             android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
             android:exported="true"
             android:label="${launcherName}"
-            android:theme="@style/Theme.BancoUno">
+            android:theme="@style/Theme.RymSimu">
             <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL" android:value="${defaultUrl}" />
             <meta-data android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR" android:resource="@color/theme" />
             <meta-data android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR" android:resource="@color/nav" />
             <meta-data android:name="android.support.customtabs.trusted.SPLASH_IMAGE_DRAWABLE" android:resource="@drawable/splash" />
             <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BACKGROUND_COLOR" android:resource="@color/background" />
             <meta-data android:name="android.support.customtabs.trusted.SPLASH_SCREEN_FADE_OUT_DURATION" android:value="300" />
-            <meta-data android:name="android.support.customtabs.trusted.FILE_PROVIDER_AUTHORITY" android:value="com.rym.bancouno.fileprovider" />
+            <meta-data android:name="android.support.customtabs.trusted.FILE_PROVIDER_AUTHORITY" android:value="com.rym.simu.fileprovider" />
             <meta-data android:name="android.support.customtabs.trusted.SCREEN_ORIENTATION" android:value="any" />
 
             <intent-filter>
@@ -46,7 +46,7 @@
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.rym.bancouno.fileprovider"
+            android:authorities="com.rym.simu.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/filepaths" />

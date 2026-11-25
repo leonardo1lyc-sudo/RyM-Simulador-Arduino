@@ -1,10 +1,10 @@
-# Publicar Banco Uno en Google Play
+# Publicar RyM Simu en Google Play
 
 La app es una *Trusted Web Activity*: abre https://banco-uno.vercel.app a pantalla completa con Chrome.
 Cada vez que se publica la web en Vercel, la app ya muestra la versión nueva. Sólo hace falta subir
 otra versión a Play si cambia algo de la carpeta `android/` (nombre, ícono, colores).
 
-- Paquete: `com.rym.bancouno` (no se puede cambiar después de la primera subida).
+- Paquete: `com.rym.simu` (no se puede cambiar después de la primera subida).
 - Política de privacidad: https://banco-uno.vercel.app/privacidad.html
 - Verificación del dominio: `web/.well-known/assetlinks.json`
 
@@ -35,7 +35,7 @@ de organización, datos de la empresa).
 
 ## 4. Crear la app en Play Console
 
-1. *Crear app* → nombre "Banco Uno", idioma español, app gratuita.
+1. *Crear app* → nombre "RyM Simu", idioma español, app gratuita.
 2. *Contenido de la app*: política de privacidad (URL de arriba), anuncios = no, acceso = sin restricciones,
    clasificación de contenido (cuestionario: app educativa, sin contenido sensible),
    público objetivo, y *Seguridad de los datos*: "no recopila ni comparte datos" (ver la política).

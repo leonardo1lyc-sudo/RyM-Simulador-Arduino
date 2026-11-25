@@ -1,4 +1,4 @@
-// App Android de Banco Uno: una Trusted Web Activity que abre https://banco-uno.vercel.app
+// App Android de RyM Simu: una Trusted Web Activity que abre https://banco-uno.vercel.app
 // a pantalla completa con Chrome. Cada publicación en Vercel actualiza la app sin subir otra versión.
 plugins {
     id 'com.android.application'
@@ -7,11 +7,11 @@ plugins {
 def host = 'banco-uno.vercel.app'
 
 android {
-    namespace 'com.rym.bancouno'
+    namespace 'com.rym.simu'
     compileSdk 36
 
     defaultConfig {
-        applicationId 'com.rym.bancouno'
+        applicationId 'com.rym.simu'
         minSdk 21
         targetSdk 36
         // En GitHub Actions el número de versión sale del número de ejecución, así cada AAB sube sin chocar.
@@ -21,7 +21,7 @@ android {
         manifestPlaceholders = [
             hostName       : host,
             defaultUrl     : "https://${host}/?fuente=app",
-            launcherName   : 'Banco Uno',
+            launcherName   : 'RyM Simu',
             themeColor     : '#0d6b78',
             navColor       : '#f4f1ea',
             backgroundColor: '#f4f1ea',

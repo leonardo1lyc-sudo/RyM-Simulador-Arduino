@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Banco Uno · Simulador de Arduino",
-  "short_name": "Banco Uno",
+  "name": "RyM Simu · Simulador de Arduino",
+  "short_name": "RyM Simu",
   "description": "Simulador de Arduino Uno, Nano, Mega y ESP32 con emulación AVR real, librerías y componentes interactivos.",
   "lang": "es",
   "start_url": "/?fuente=app",
