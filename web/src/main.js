@@ -1185,7 +1185,10 @@ exSel.addEventListener('change', e => { if (e.target.value) { applyState(example
   const ig = String(BRAND.instagram || '').replace(/^@/, '').trim(), wa = String(BRAND.whatsapp || '').replace(/\D/g, '');
   if (ig) { const a = $('#igLink'); a.href = 'https://instagram.com/' + encodeURIComponent(ig); a.title = `Instagram de ${BRAND.empresa} (@${ig})`; a.hidden = false; }
   if (wa) { const a = $('#waLink'); a.href = `https://wa.me/${wa}` + (BRAND.mensajeWhatsapp ? '?text=' + encodeURIComponent(BRAND.mensajeWhatsapp) : ''); a.hidden = false; }
-  $('#social').hidden = !(ig || wa);
+  const fb = String(BRAND.facebook || '').trim();
+  if (/^https:\/\/(www\.)?facebook\.com\//.test(fb)) { const a = $('#fbLink'); a.href = fb; a.title = `Facebook de ${BRAND.empresa}`; a.hidden = false; }
+  if (wa) $('#waLink').title = `WhatsApp de ${BRAND.empresa} (+${wa.replace(/^(\d{2})(\d)(\d{4})(\d{2})(\d{4})$/, '$1 $2 $3 $4-$5')})`;
+  $('#social').hidden = !(ig || wa || fb);
 })();
 /* ======================= Arranque ======================= */
 initLayout();
