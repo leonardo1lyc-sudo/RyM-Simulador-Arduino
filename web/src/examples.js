@@ -141,7 +141,7 @@ void loop() {
 `,
   },
   i2c: {
-    title: 'LCD I2C (necesita LiquidCrystal_I2C)',
+    title: 'LCD 16×2 I2C (LiquidCrystal_I2C)',
     build(){
       return {
         comps: [{ id: 1, type: 'lcdi2c', x: 860, y: 400, rot: 0, name: 'LCD1', props: { address: 0x27 } }],
@@ -166,7 +166,7 @@ void setup() {
   lcd.init();
   lcd.backlight();
   lcd.setCursor(0, 0);
-  lcd.print("Banco Uno + I2C");
+  lcd.print("RyM Simu + I2C");
 }
 
 void loop() {
@@ -585,7 +585,7 @@ void loop() {
   pantalla.setTextColor(SSD1306_WHITE);
   pantalla.setTextSize(1);
   pantalla.setCursor(0, 0);
-  pantalla.println("Banco Uno");
+  pantalla.println("RyM Simu");
   pantalla.setTextSize(2);
   pantalla.setCursor(0, 18);
   pantalla.print("A0: ");
@@ -1707,6 +1707,470 @@ void loop() {
   digitalWrite(VERDE, LOW);
   digitalWrite(AMARILLO, HIGH); delay(700);
   digitalWrite(AMARILLO, LOW);
+}
+`,
+  },
+  nfc: {
+    title: 'NFC PN532 (I2C) con LCD 20×4',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'pn532', x: 840, y: 470, rot: 0, name: 'NFC1', props: { mode: 'i2c', card: 'tarjeta', near: false } },
+          { id: 2, type: 'lcd2004', x: 1000, y: 110, rot: 0, name: 'LCD1', props: { address: 0x27, color: 'azul' } },
+        ],
+        wires: [
+          { id: 10, a: 'C1:SDA', b: 'B:A4', pts: [], color: SIG[1] },
+          { id: 11, a: 'C1:SCL', b: 'B:A5', pts: [], color: SIG[0] },
+          { id: 12, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 13, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+          { id: 14, a: 'C2:SDA', b: 'B:A4', pts: [], color: SIG[1] },
+          { id: 15, a: 'C2:SCL', b: 'B:A5', pts: [], color: SIG[0] },
+          { id: 16, a: 'C2:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 17, a: 'C2:GND', b: 'B:GND.3', pts: [], color: GND },
+        ],
+        counters: { pn532: 1, lcd2004: 1 },
+      };
+    },
+    code: `// Lector NFC PN532 por I2C: muestra el UID en un LCD 20x4 y abre la "puerta" (LED 13).
+// Haz clic en la tarjeta o el llavero para acercarlo. Elige cuál en el panel de propiedades.
+#include <Wire.h>
+#include <Adafruit_PN532.h>
+#include <LiquidCrystal_I2C.h>
+
+Adafruit_PN532 nfc(2, 3);            // IRQ y RESET (en I2C son opcionales)
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+const uint8_t autorizado[4] = {0x93, 0x3A, 0x7C, 0x1D};
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(LED_BUILTIN, OUTPUT);
+  lcd.init();
+  lcd.backlight();
+  lcd.print("RyM Simu - NFC");
+  nfc.begin();
+  uint32_t v = nfc.getFirmwareVersion();
+  if (!v) { lcd.setCursor(0, 1); lcd.print("PN532 no responde"); while (1); }
+  Serial.print("PN532 firmware ");
+  Serial.print((v >> 16) & 0xFF); Serial.print('.'); Serial.println((v >> 8) & 0xFF);
+  nfc.SAMConfig();
+  lcd.setCursor(0, 1); lcd.print("Acerca una tarjeta");
+}
+
+void loop() {
+  uint8_t uid[7], largo;
+  if (!nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &largo)) return;
+  bool ok = largo == 4;
+  lcd.clear();
+  lcd.print("UID:");
+  Serial.print("UID:");
+  for (uint8_t i = 0; i < largo; i++) {
+    if (uid[i] < 0x10) { lcd.print('0'); Serial.print(" 0"); } else Serial.print(' ');
+    lcd.print(uid[i], HEX);
+    Serial.print(uid[i], HEX);
+    if (i < 4 && uid[i] != autorizado[i]) ok = false;
+  }
+  Serial.println();
+  lcd.setCursor(0, 1); lcd.print(largo == 4 ? "MIFARE Classic 1K" : "NTAG (7 bytes)");
+  lcd.setCursor(0, 3); lcd.print(ok ? "Acceso permitido" : "Acceso denegado");
+  digitalWrite(LED_BUILTIN, ok ? HIGH : LOW);
+  delay(1500);
+}
+`,
+  },
+  sd: {
+    title: 'Registro de datos en microSD',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'sdcard', x: 860, y: 260, rot: 0, name: 'SD1', props: { inserted: true, files: [] } },
+          { id: 2, type: 'pot', x: 820, y: 520, rot: 0, name: 'POT1', props: { ohms: 10000, pos: 0.5 } },
+        ],
+        wires: [
+          { id: 10, a: 'C1:CS', b: 'B:D4', pts: [], color: SIG[4] },
+          { id: 11, a: 'C1:SCK', b: 'B:D13', pts: [], color: SIG[0] },
+          { id: 12, a: 'C1:MOSI', b: 'B:D11', pts: [], color: SIG[1] },
+          { id: 13, a: 'C1:MISO', b: 'B:D12', pts: [], color: SIG[2] },
+          { id: 14, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 15, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+          { id: 16, a: 'C2:p1', b: 'B:GND.3', pts: [], color: GND },
+          { id: 17, a: 'C2:p3', b: 'B:5V', pts: [], color: RED },
+          { id: 18, a: 'C2:w', b: 'B:A0', pts: [], color: SIG[3] },
+        ],
+        counters: { sdcard: 1, pot: 1 },
+      };
+    },
+    code: `// Registro de datos: guarda la lectura del potenciómetro en DATOS.TXT cada segundo.
+// Abre "Archivos de la tarjeta" en el panel del módulo para ver o descargar el archivo.
+#include <SPI.h>
+#include <SD.h>
+
+const int CS = 4;
+
+void setup() {
+  Serial.begin(9600);
+  if (!SD.begin(CS)) { Serial.println("No hay tarjeta"); while (1); }
+  Serial.println("Tarjeta lista");
+  File f = SD.open("DATOS.TXT", FILE_WRITE);
+  if (f) { f.println("segundos;valor"); f.close(); }
+}
+
+void loop() {
+  int v = analogRead(A0);
+  File f = SD.open("DATOS.TXT", FILE_WRITE);
+  if (f) {
+    f.print(millis() / 1000); f.print(';'); f.println(v);
+    f.close();
+    Serial.print("Guardado: "); Serial.println(v);
+  } else Serial.println("Error al abrir DATOS.TXT");
+  delay(1000);
+}
+`,
+  },
+  mp3: {
+    title: 'Reproductor MP3 DFPlayer Mini',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'dfplayer', x: 880, y: 300, rot: 0, name: 'MP3', props: { ntracks: 10 } },
+          { id: 2, type: 'speaker', x: 1060, y: 300, rot: 0, name: 'PARL1', props: {} },
+          { id: 3, type: 'res', x: 720, y: 220, rot: 0, name: 'R1', props: { ohms: 1000 } },
+          { id: 4, type: 'btn', x: 760, y: 520, rot: 0, name: 'BTN1', props: { pressed: false, latch: false, bounce: true } },
+        ],
+        wires: [
+          { id: 10, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 11, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+          { id: 12, a: 'B:D11', b: 'C3:a', pts: [], color: SIG[0] },
+          { id: 13, a: 'C3:b', b: 'C1:RX', pts: [], color: SIG[0] },
+          { id: 14, a: 'C1:TX', b: 'B:D10', pts: [], color: SIG[1] },
+          { id: 15, a: 'C1:SPK1', b: 'C2:p', pts: [], color: SIG[3] },
+          { id: 16, a: 'C1:SPK2', b: 'C2:n', pts: [], color: GND },
+          { id: 17, a: 'C4:a', b: 'B:D2', pts: [], color: SIG[2] },
+          { id: 18, a: 'C4:b', b: 'B:GND.3', pts: [], color: GND },
+        ],
+        counters: { dfplayer: 1, speaker: 1, res: 1, btn: 1 },
+      };
+    },
+    code: `// DFPlayer Mini: el botón pasa a la pista siguiente. Activa "Sonido" para escucharlo.
+// Puedes cargar tus MP3 en el panel del módulo; si no, suenan melodías de prueba.
+#include <SoftwareSerial.h>
+#include <DFRobotDFPlayerMini.h>
+
+SoftwareSerial mp3Serial(10, 11);   // RX, TX (con 1 kΩ en serie hacia el RX del módulo)
+DFRobotDFPlayerMini mp3;
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(2, INPUT_PULLUP);
+  mp3Serial.begin(9600);
+  if (!mp3.begin(mp3Serial)) { Serial.println("DFPlayer no responde"); while (1); }
+  Serial.print("Pistas en la tarjeta: ");
+  Serial.println(mp3.readFileCounts());
+  mp3.volume(20);
+  mp3.play(1);
+}
+
+void loop() {
+  if (digitalRead(2) == LOW) {
+    mp3.next();
+    Serial.println("Siguiente pista");
+    delay(300);
+    while (digitalRead(2) == LOW);
+  }
+}
+`,
+  },
+  mpu: {
+    title: 'Acelerómetro y giroscopio MPU6050',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'mpu6050', x: 860, y: 300, rot: 0, name: 'IMU1', props: { roll: 15, pitch: -10, gx: 0, gy: 0, gz: 0, temp: 25, noise: true } }],
+        wires: [
+          { id: 10, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 11, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+          { id: 12, a: 'C1:SCL', b: 'B:A5', pts: [], color: SIG[0] },
+          { id: 13, a: 'C1:SDA', b: 'B:A4', pts: [], color: SIG[1] },
+        ],
+        counters: { mpu6050: 1 },
+      };
+    },
+    code: `// MPU6050: muestra la aceleración, el giro y la temperatura. Inclina el módulo con los
+// controles del panel de propiedades (alabeo y cabeceo) y mira cómo cambian los valores.
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
+
+Adafruit_MPU6050 mpu;
+
+void setup() {
+  Serial.begin(115200);
+  if (!mpu.begin()) { Serial.println("No se encontró el MPU6050"); while (1); }
+  mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
+  mpu.setGyroRange(MPU6050_RANGE_250_DEG);
+  Serial.println("MPU6050 listo");
+}
+
+void loop() {
+  sensors_event_t a, g, t;
+  mpu.getEvent(&a, &g, &t);
+  Serial.print("Acel X:"); Serial.print(a.acceleration.x, 2);
+  Serial.print(" Y:"); Serial.print(a.acceleration.y, 2);
+  Serial.print(" Z:"); Serial.print(a.acceleration.z, 2);
+  Serial.print(" m/s2 | Giro Z:"); Serial.print(g.gyro.z, 2);
+  Serial.print(" rad/s | "); Serial.print(t.temperature, 1); Serial.println(" C");
+  delay(500);
+}
+`,
+  },
+  tft: {
+    title: 'Pantalla TFT 2,2" ILI9341 (SPI)',
+    build(){
+      return {
+        comps: [{ id: 1, type: 'ili9341', x: 900, y: 320, rot: 0, name: 'TFT1', props: {} }],
+        wires: [
+          { id: 10, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 11, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+          { id: 12, a: 'C1:CS', b: 'B:D10', pts: [], color: SIG[4] },
+          { id: 13, a: 'C1:RESET', b: 'B:D8', pts: [], color: SIG[3] },
+          { id: 14, a: 'C1:DC', b: 'B:D9', pts: [], color: SIG[2] },
+          { id: 15, a: 'C1:MOSI', b: 'B:D11', pts: [], color: SIG[1] },
+          { id: 16, a: 'C1:SCK', b: 'B:D13', pts: [], color: SIG[0] },
+          { id: 17, a: 'C1:LED', b: 'B:5V', pts: [], color: RED },
+        ],
+        counters: { ili9341: 1 },
+      };
+    },
+    code: `// TFT ILI9341 de 240x320 por SPI con Adafruit_ILI9341: textos, figuras y un contador.
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_ILI9341.h>
+
+Adafruit_ILI9341 tft(10, 9, 8);   // CS, DC, RESET
+
+void setup() {
+  tft.begin();
+  tft.setRotation(1);
+  tft.fillScreen(ILI9341_NAVY);
+  tft.fillRoundRect(10, 10, 300, 50, 10, ILI9341_WHITE);
+  tft.setTextColor(ILI9341_NAVY); tft.setTextSize(3);
+  tft.setCursor(70, 24); tft.print("RyM Simu");
+  tft.fillCircle(60, 150, 40, ILI9341_RED);
+  tft.fillTriangle(130, 190, 170, 110, 210, 190, ILI9341_GREEN);
+  tft.fillRect(230, 115, 70, 70, ILI9341_YELLOW);
+  tft.setTextColor(ILI9341_WHITE); tft.setTextSize(2);
+  tft.setCursor(20, 210); tft.print("Segundos:");
+}
+
+void loop() {
+  tft.fillRect(140, 210, 100, 20, ILI9341_NAVY);
+  tft.setCursor(140, 210); tft.print(millis() / 1000);
+  delay(1000);
+}
+`,
+  },
+  rf433: {
+    title: 'Radio 433 MHz: emisor y receptor (RCSwitch)',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'rftx', x: 820, y: 220, rot: 0, name: 'TX1', props: {} },
+          { id: 2, type: 'rfrx', x: 860, y: 460, rot: 0, name: 'RX1', props: {} },
+        ],
+        wires: [
+          { id: 10, a: 'C1:DATA', b: 'B:D10', pts: [], color: SIG[0] },
+          { id: 11, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 12, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+          { id: 13, a: 'C2:DATA', b: 'B:D2', pts: [], color: SIG[1] },
+          { id: 14, a: 'C2:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 15, a: 'C2:GND', b: 'B:GND.3', pts: [], color: GND },
+        ],
+        counters: { rftx: 1, rfrx: 1 },
+      };
+    },
+    code: `// Emisor y receptor de 433 MHz con RCSwitch. El Arduino envía un código cada 2 s
+// y recibe los botones A-D del control remoto (dibujados sobre el receptor):
+// A prende el LED 13 y B lo apaga. RCSwitch apaga la recepción mientras transmite,
+// así que el mismo Arduino no se escucha a sí mismo (para eso se usan dos placas).
+#include <RCSwitch.h>
+
+RCSwitch radio;
+unsigned long ultimo = 0;
+long contador = 1000;
+
+void setup() {
+  Serial.begin(9600);
+  radio.enableReceive(0);      // interrupción 0 = pin 2
+  radio.enableTransmit(10);
+  pinMode(LED_BUILTIN, OUTPUT);
+}
+
+void loop() {
+  if (millis() - ultimo > 2000) {
+    ultimo = millis();
+    radio.send(++contador, 24);
+    Serial.print("Enviado: "); Serial.println(contador);
+  }
+  if (radio.available()) {
+    long v = radio.getReceivedValue();
+    Serial.print("Recibido: "); Serial.print(v);
+    Serial.print(" ("); Serial.print(radio.getReceivedBitlength()); Serial.println(" bits)");
+    if (v == 1361) digitalWrite(LED_BUILTIN, HIGH);
+    if (v == 1364) digitalWrite(LED_BUILTIN, LOW);
+    radio.resetAvailable();
+  }
+}
+`,
+  },
+  reloj3231: {
+    title: 'Reloj DS3231 con alarma, EEPROM y LCD 20×4 (RTClib)',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'ds3231', x: 860, y: 470, rot: 0, name: 'RTC1', props: { temp: 24, bat: true, eeaddr: 0x57, ee: '' } },
+          { id: 2, type: 'lcd2004', x: 1000, y: 160, rot: 0, name: 'LCD1', props: { address: 0x27, color: 'azul' } },
+        ],
+        wires: [
+          { id: 10, a: 'C1:SDA', b: 'B:A4', pts: [], color: SIG[1] },
+          { id: 11, a: 'C1:SCL', b: 'B:A5', pts: [], color: SIG[0] },
+          { id: 12, a: 'C1:VCC', b: 'B:5V', pts: [], color: RED },
+          { id: 13, a: 'C1:GND', b: 'B:GND.2', pts: [], color: GND },
+          { id: 14, a: 'C1:SQW', b: 'B:D2', pts: [], color: SIG[3] },
+          { id: 15, a: 'C2:SDA', b: 'C1:SDA2', pts: [], color: SIG[1] },
+          { id: 16, a: 'C2:SCL', b: 'C1:SCL2', pts: [], color: SIG[0] },
+          { id: 17, a: 'C2:VCC', b: 'C1:VCC2', pts: [], color: RED },
+          { id: 18, a: 'C2:GND', b: 'C1:GND2', pts: [], color: GND },
+        ],
+        counters: { ds3231: 1, lcd2004: 1 },
+      };
+    },
+    code: `// Reloj DS3231 (módulo ZS-042) con la librería RTClib: fecha, hora y temperatura en un LCD 20x4.
+// La alarma 1 suena en el segundo 30 de cada minuto: SQW pasa a LOW y prende el LED 13.
+// Además cuenta los arranques en la EEPROM AT24C32 del módulo (dirección I2C 0x57).
+#include <Wire.h>
+#include <RTClib.h>
+#include <LiquidCrystal_I2C.h>
+
+RTC_DS3231 rtc;
+LiquidCrystal_I2C lcd(0x27, 20, 4);
+const char *dias[7] = {"Domingo", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado"};
+const int EEPROM_I2C = 0x57;
+unsigned long ledHasta = 0;
+
+void eeEscribir(unsigned int dir, byte valor) {
+  Wire.beginTransmission(EEPROM_I2C);
+  Wire.write(dir >> 8); Wire.write(dir & 0xFF); Wire.write(valor);
+  Wire.endTransmission();
+  delay(10);                    // la EEPROM tarda en grabar
+}
+
+byte eeLeer(unsigned int dir) {
+  Wire.beginTransmission(EEPROM_I2C);
+  Wire.write(dir >> 8); Wire.write(dir & 0xFF);
+  Wire.endTransmission();
+  Wire.requestFrom(EEPROM_I2C, 1);
+  return Wire.read();
+}
+
+void dosCifras(int n) { if (n < 10) lcd.print('0'); lcd.print(n); }
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(2, INPUT_PULLUP);
+  pinMode(LED_BUILTIN, OUTPUT);
+  lcd.init();
+  lcd.backlight();
+  if (!rtc.begin()) { lcd.print("No hay DS3231"); while (1); }
+  if (rtc.lostPower()) {
+    Serial.println("El reloj perdio la hora: se pone la de compilacion.");
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  }
+  byte n = eeLeer(0);
+  if (n == 0xFF) n = 0;         // EEPROM nueva
+  eeEscribir(0, n + 1);
+  Serial.print("Arranques guardados en la EEPROM: ");
+  Serial.println(n + 1);
+
+  rtc.disable32K();
+  rtc.clearAlarm(1);
+  rtc.clearAlarm(2);
+  rtc.writeSqwPinMode(DS3231_OFF);   // SQW funciona como salida de alarma
+  rtc.setAlarm1(DateTime(2000, 1, 1, 0, 0, 30), DS3231_A1_Second);
+}
+
+void loop() {
+  DateTime t = rtc.now();
+  lcd.setCursor(0, 0); lcd.print(dias[t.dayOfTheWeek()]); lcd.print("          ");
+  lcd.setCursor(0, 1); dosCifras(t.day()); lcd.print('/'); dosCifras(t.month()); lcd.print('/'); lcd.print(t.year());
+  lcd.setCursor(0, 2); dosCifras(t.hour()); lcd.print(':'); dosCifras(t.minute()); lcd.print(':'); dosCifras(t.second());
+  lcd.setCursor(0, 3); lcd.print("Temp: "); lcd.print(rtc.getTemperature(), 2); lcd.print(" C");
+
+  if (digitalRead(2) == LOW) {       // la alarma tira SQW a LOW
+    Serial.print("Alarma a las "); Serial.println(rtc.now().timestamp(DateTime::TIMESTAMP_TIME));
+    rtc.clearAlarm(1);
+    ledHasta = millis() + 3000;
+  }
+  digitalWrite(LED_BUILTIN, millis() < ledHasta);
+  delay(200);
+}
+`,
+  },
+  casero: {
+    title: 'Arduino casero: ATmega328P con cristal y 7805',
+    board: 'dip328',
+    build(){
+      return {
+        comps: [
+          { id: 1, type: 'battery', x: 640, y: 660, rot: 0, name: 'BAT1', props: { volts: 9 } },
+          { id: 2, type: 'vreg', x: 580, y: 500, rot: 0, name: 'U1', props: { model: '7805' } },
+          { id: 3, type: 'ecap', x: 500, y: 500, rot: 0, name: 'C1', props: { uf: 100, volts: 16 } },
+          { id: 4, type: 'xtal', x: 320, y: 520, rot: 180, name: 'Y1', props: { mhz: 16 } },
+          { id: 5, type: 'cap', x: 250, y: 540, rot: 90, name: 'C2', props: { uf: 0.000022 } },
+          { id: 6, type: 'cap', x: 390, y: 540, rot: 90, name: 'C3', props: { uf: 0.000022 } },
+          { id: 7, type: 'res', x: 150, y: 500, rot: 90, name: 'R1', props: { ohms: 10000 } },
+          { id: 8, type: 'res', x: 420, y: 220, rot: 0, name: 'R2', props: { ohms: 1000 } },
+          { id: 9, type: 'led', x: 530, y: 180, rot: 0, name: 'LED1', props: { color: 'rojo' } },
+          { id: 10, type: 'cap', x: 280, y: 220, rot: 0, name: 'C4', props: { uf: 0.1 } },
+          { id: 11, type: 'btn', x: 80, y: 480, rot: 90, name: 'RST', props: { pressed: false, latch: false, bounce: true } },
+        ],
+        wires: [
+          { id: 20, a: 'C1:p', b: 'C2:IN', pts: [], color: RED },
+          { id: 21, a: 'C1:n', b: 'C2:GND', pts: [], color: GND },
+          { id: 22, a: 'C2:GND', b: 'B:GND.1', pts: [], color: GND },
+          { id: 23, a: 'C2:OUT', b: 'B:VCC', pts: [], color: RED },
+          { id: 24, a: 'C3:p', b: 'C2:OUT', pts: [], color: RED },
+          { id: 25, a: 'C3:n', b: 'C2:GND', pts: [], color: GND },
+          { id: 26, a: 'B:VCC', b: 'B:AVCC', pts: [], color: RED },
+          { id: 27, a: 'C4:b', b: 'B:XTAL1', pts: [], color: SIG[1] },
+          { id: 28, a: 'C4:a', b: 'B:XTAL2', pts: [], color: SIG[1] },
+          { id: 29, a: 'C5:a', b: 'B:XTAL1', pts: [], color: SIG[1] },
+          { id: 30, a: 'C5:b', b: 'B:GND.1', pts: [], color: GND },
+          { id: 31, a: 'C6:a', b: 'B:XTAL2', pts: [], color: SIG[1] },
+          { id: 32, a: 'C6:b', b: 'B:GND.1', pts: [], color: GND },
+          { id: 33, a: 'C7:a', b: 'B:RESET', pts: [], color: SIG[0] },
+          { id: 34, a: 'C7:b', b: 'B:VCC', pts: [], color: RED },
+          { id: 35, a: 'B:D13', b: 'C8:a', pts: [], color: SIG[2] },
+          { id: 36, a: 'C8:b', b: 'C9:a', pts: [], color: SIG[2] },
+          { id: 37, a: 'C9:k', b: 'B:GND.2', pts: [], color: GND },
+          { id: 38, a: 'C10:b', b: 'B:AREF', pts: [], color: SIG[3] },
+          { id: 39, a: 'C10:a', b: 'B:GND.2', pts: [], color: GND },
+          { id: 40, a: 'C11:a', b: 'B:RESET', pts: [], color: SIG[0] },
+          { id: 41, a: 'C11:b', b: 'B:GND.1', pts: [], color: GND },
+        ],
+        counters: { battery: 1, vreg: 1, ecap: 1, xtal: 1, cap: 3, res: 2, led: 1, btn: 1 },
+      };
+    },
+    code: `// Arduino casero: ATmega328P suelto con cristal de 16 MHz, 7805 y botón de reset.
+// Prueba quitar el cristal o el cable de VCC: el chip no arranca y aparece el aviso.
+// El LED en el pin 13 (pata 19 del chip) parpadea una vez por segundo.
+
+void setup() {
+  pinMode(13, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(13, HIGH);
+  delay(500);
+  digitalWrite(13, LOW);
+  delay(500);
 }
 `,
   },

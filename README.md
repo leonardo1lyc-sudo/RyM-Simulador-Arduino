@@ -1,4 +1,4 @@
-# Banco Uno · Simulador de Arduino
+# RyM Simu · Simulador de Arduino
 
 Simulador de Arduino en el navegador con **emulación real del ATmega328P y el ATmega2560** ([avr8js](https://github.com/wokwi/avr8js)), compilación con **avr-gcc** y el núcleo oficial [ArduinoCore-avr](https://github.com/arduino/ArduinoCore-avr), y circuitos resueltos con análisis nodal (tensiones y corrientes reales).
 
@@ -8,7 +8,8 @@ Simulador de Arduino en el navegador con **emulación real del ATmega328P y el A
 - **ESP32 DevKit (modo compatible)**: pinout real de 30 pines a 3,3 V, numeración por GPIO, `analogRead` de 12 bits, LEDC (API 2.x y 3.x), `dacWrite`, `touchRead`, interrupciones con `attachInterrupt(GPIO, …)`, botones EN y BOOT, `Serial.printf`, `Preferences`, `ESP32Servo` y `BluetoothSerial` (panel «Celular»). WiFi simulado: `WiFi.begin`/`softAP`, `WebServer` y `WiFiServer`; la página que sirve el ESP32 se ve en el panel **Navegador**, con enlaces, formularios y `fetch()`. No hay internet ni FreeRTOS: el programa corre sobre un ATmega2560 emulado con librerías de compatibilidad (`server/esp32/`), así que la velocidad y la memoria no son las del ESP32 real.
 - **ESP32-CAM (AI-Thinker, modo compatible)**: sus 16 pines, LED flash en GPIO4, LED rojo en GPIO33 y botón RST. `esp_camera.h` con la cámara OV2640 simulada: `esp_camera_fb_get()` entrega un cuadro con la resolución elegida y el panel Navegador lo muestra como una imagen de prueba (también dentro de `<img>` de la página). No hay vídeo continuo (MJPEG).
 - **ESP32-S3 DevKitC-1 y ESP32-C3 DevKitM-1 (modo compatible)**: cada una con su numeración de GPIO y sus pines por defecto (I2C, SPI, Serial1), LED RGB de la placa (`neopixelWrite`, `rgbLedWrite` y `digitalWrite(RGB_BUILTIN, …)`), botón BOOT (GPIO0 en el S3, GPIO9 en el C3) y `CONFIG_IDF_TARGET_*`. Como en los chips reales, `BluetoothSerial` no compila (solo tienen Bluetooth LE, que no se simula).
-- **Editor de circuitos**: biblioteca de componentes, arrastrar y soltar, cables con codos, girar, propiedades.
+- **Editor de circuitos**: biblioteca de componentes, arrastrar y soltar, girar, propiedades. Los cables ya conectados se acomodan: arrastrando un cable se dobla, los codos se mueven y con doble clic se quitan, un tramo entre dos codos se arrastra entero, y en el panel del cable están «Ángulo recto» (tramos horizontales y verticales) y «Quitar codos».
+- **Redes de RyM**: botones de Instagram (@rym_salta), Facebook y WhatsApp debajo del nombre de la app; los datos están en `web/src/brand.js`.
 - **Componentes**: LED (6 colores), LED RGB, resistencia (bandas de color), pulsador (con rebote opcional), interruptor, potenciómetro, fotorresistencia, zumbador (con sonido), servo SG90, LCD 16×2 paralelo (HD44780) y LCD 16×2 I2C (PCF8574).
 - **Módulos**: ultrasonido HC-SR04, DHT22/DHT11, PIR, joystick KY-023, sensor de llama, sensor de gas MQ-2, módulo relé, driver L298N con motor DC, batería, OLED SSD1306 I2C, matriz 8×8 MAX7219 y Bluetooth HC-05/HC-06 (con panel «Celular» para enviar y recibir).
 - **Kit de sensores (KY) y otros módulos**: botón KY-004, inclinación KY-020, reed KY-021, Hall KY-003 y lineal KY-024, golpe KY-031, táctil TTP223, obstáculo IR, seguidor de línea KY-033, termistor KY-013 y KY-028, LDR KY-018, micrófono KY-038, humedad de suelo, lluvia, nivel de agua, láser KY-008, zumbador activo KY-012 y pasivo KY-006, LED de 2 colores KY-011, semáforo y relés de 1, 2, 4 y 8 canales.
@@ -17,7 +18,12 @@ Simulador de Arduino en el navegador con **emulación real del ATmega328P y el A
 - **Tiras y aros LED**: tira WS2812B/NeoPixel de 1 a 15 LED y aro de 1 a 10 (Adafruit_NeoPixel; el protocolo se decodifica por tiempos, se pueden encadenar por DOUT → DIN y avisa del consumo), y tira o aro RGB común de ánodo común a 12 V o 5 V (avisa si un canal se maneja directo desde un pin en vez de con un transistor o MOSFET).
 - **Componentes electrónicos**: condensador cerámico (10 pF a 10 µF, con su código 104, 473…) y electrolítico (1 µF a 4700 µF, con tensión máxima) que se cargan y descargan en el tiempo (constante RC real; avisa si el electrolítico está invertido o pasado de tensión); diodos 1N4007, 1N4148 y 1N5819; Zener de 3,3 a 12 V; transistores NPN (2N2222A, BC547, TIP120) y PNP (2N2907A, BC557, TIP125) con corte, zona activa y saturación; MOSFET IRLZ44N e IRF540N; reguladores 7805, 7809, 7812 y AMS1117 de 3,3 y 5 V (caída mínima, calor). Cada uno tiene sus pines en el orden real del encapsulado.
 - **Protoboards**: completa (830 puntos), media (400) y mini (170). Las columnas de 5 y los rieles + y − están unidos por dentro, y las patas de los componentes que caen sobre un agujero quedan conectadas sin cable. Al mover la protoboard se mueve todo lo que tiene enchufado.
-- **Librerías incluidas** además de las del núcleo: Servo, LiquidCrystal, DHT sensor library, Adafruit SSD1306, Adafruit GFX, Adafruit BusIO, Adafruit Unified Sensor y LedControl.
+- **NFC, almacenamiento, audio y comunicación**: lector NFC PN532 en I2C, SPI o HSU con tarjeta MIFARE Classic, llavero y etiqueta NTAG213 (Adafruit_PN532); lector microSD con una tarjeta FAT16 de 64 MB simulada cuyos archivos se ven, se bajan y se suben desde el panel (SD); reproductor DFPlayer Mini con tus MP3 o melodías de prueba, que suena por un parlante de 8 Ω o por el amplificador PAM8610 (DFRobotDFPlayerMini); módulo GSM SIM800L con comandos AT, SMS y llamadas desde el panel «Celular»; emisor FS1000A y receptor XY-MK-5V de 433 MHz con control remoto A–D (RCSwitch).
+- **Sensores, pantallas y motores**: sensor de color TCS3200/TCS230 (frecuencia según S0–S3 y el color elegido), acelerómetro y giroscopio MPU6050 (Adafruit_MPU6050 y MPU6050 de Electronic Cats), LCD 20×4 I2C azul o verde, pantalla TFT 2,2" ILI9341 de 240×320 por SPI (Adafruit_ILI9341), motor amarillo con reductora (TT) y servo MG996R de alto torque.
+- **Reloj DS3231 de alta precisión (módulo ZS-042)**: fecha y hora que siguen con la pila CR2032 aunque se reinicie el Arduino (sin pila, `lostPower()` da verdadero), alarmas 1 y 2 en SQW/INT, onda cuadrada de 1 Hz a 8 kHz, salida de 32 kHz, temperatura interna y EEPROM AT24C32 de 4 KB en 0x57 (librería RTClib).
+- **Arduino casero**: placa «ATmega328P suelto» (DIP-28 con zócalo y la numeración física de las patas), cristal de 16 MHz, tiras de pines macho y hembra de 1 a 20 y borneras de 2 y 3 polos de 5,08 mm. El chip solo arranca con 5 V en VCC, cristal entre XTAL1 y XTAL2 y RESET en alto, y avisa si faltan los condensadores de 22 pF, AVCC o la resistencia de reset.
+- **Abrir y guardar proyectos**: el botón **Abrir** acepta un `.ino`, un `.json` (el formato propio de RyM Simu o un `diagram.json` de Wokwi), los dos juntos, un `.zip` con ambos y pestañas `.h/.cpp`; también se pueden arrastrar al lienzo. El botón **.json** descarga el circuito con el código para volver a abrirlo. Las piezas de Wokwi que no existen en RyM Simu se omiten con un aviso.
+- **Librerías incluidas** además de las del núcleo: Servo, LiquidCrystal, DHT sensor library, Adafruit SSD1306, Adafruit GFX, Adafruit BusIO, Adafruit Unified Sensor y LedControl, TM1637, Keypad, IRremote, MFRC522, Rtc, OneWire, DallasTemperature, Stepper, Adafruit NeoPixel, Adafruit PN532, SD, DFRobotDFPlayerMini, Adafruit MPU6050, MPU6050, RCSwitch, LiquidCrystal_I2C, Adafruit ILI9341 y RTClib.
 - **Emulación real**: CPU AVR, timers y PWM, ADC, USART (monitor serie bidireccional), I2C, SPI, EEPROM e interrupciones externas. En el Mega: timers 0–5, cuatro USART, ADC de 16 canales e INT0–INT7.
 - **Librerías**: incluidas Servo, LiquidCrystal, Wire, SPI, EEPROM y SoftwareSerial. El usuario puede **cargar las suyas** como `.zip` (el mismo formato que «Añadir biblioteca .ZIP» del IDE) o como archivos `.h/.cpp`; se guardan en el navegador y se envían al compilar.
 - **Avisos educativos**: LED sin resistencia, pin que entrega más de 40 mA, cortocircuitos, entradas flotantes, servo o pantalla sin alimentación, cableado I2C incorrecto.
@@ -36,8 +42,8 @@ npm run dev                  # compila la web y abre http://localhost:8080
 Con Docker:
 
 ```sh
-docker build -t banco-uno .
-docker run -p 8080:8080 banco-uno
+docker build -t rym-simu .
+docker run -p 8080:8080 rym-simu
 ```
 
 ## Pruebas
@@ -52,6 +58,7 @@ node test/e2e-kits3.cjs       # DS1302, 28BYJ-48 + ULN2003, RC522, DS18B20
 node test/e2e-kits4.cjs       # tiras y aros LED (WS2812B y RGB comunes)
 node test/e2e-kits5.cjs       # condensadores (RC), diodos, Zener, transistores, MOSFET, reguladores
 node test/e2e-kits6.cjs       # protoboards con conexión automática
+node test/e2e-kits7.cjs       # PN532, microSD, DFPlayer, MPU6050, TFT, RF 433, DS3231, Arduino casero y abrir .ino/diagram.json
 node test/e2e-boards.cjs      # placas Nano y Mega 2560 (PWM de los 6 timers, A8, INT4, Serial1, I2C en 20/21)
 node test/e2e-esp32.cjs       # ESP32, ESP32-CAM, S3 y C3: WiFi y servidor web, Navegador, ADC de 12 bits, LEDC, BOOT, Bluetooth, fotos
 ```

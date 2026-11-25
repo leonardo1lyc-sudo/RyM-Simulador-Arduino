@@ -1,0 +1,58 @@
+// App Android de RyM Simu: una Trusted Web Activity que abre https://banco-uno.vercel.app
+// a pantalla completa con Chrome. Cada publicación en Vercel actualiza la app sin subir otra versión.
+plugins {
+    id 'com.android.application'
+}
+
+def host = 'banco-uno.vercel.app'
+
+android {
+    namespace 'com.rym.simu'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.rym.simu'
+        minSdk 21
+        targetSdk 36
+        // En GitHub Actions el número de versión sale del número de ejecución, así cada AAB sube sin chocar.
+        versionCode((System.getenv('VERSION_CODE') ?: '1') as int)
+        versionName '1.0.' + (System.getenv('VERSION_CODE') ?: '0')
+
+        manifestPlaceholders = [
+            hostName       : host,
+            defaultUrl     : "https://${host}/?fuente=app",
+            launcherName   : 'RyM Simu',
+            themeColor     : '#0f1416',
+            navColor       : '#0f1416',
+            backgroundColor: '#0f1416',
+        ]
+    }
+
+    signingConfigs {
+        release {
+            def ks = System.getenv('ANDROID_KEYSTORE_FILE')
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (System.getenv('ANDROID_KEYSTORE_FILE')) signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}

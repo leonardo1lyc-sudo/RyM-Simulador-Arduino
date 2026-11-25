@@ -33,14 +33,9 @@ const OUT = process.env.SHOTS || '.';
   check(Math.abs(ang - 54) < 6, 'servo: ángulo ' + ang + ' (esperado ~54)');
   await p.screenshot({ path: path.join(OUT, 'servo.png') });
 
-  await ex('i2c'); await p.waitForTimeout(500);
-  check(/LiquidCrystal_I2C/.test(await status()), 'i2c sin librería: error claro ' + JSON.stringify((await status()).slice(0, 160)));
-  const dir = process.env.I2CLIB; const files = {};
-  for (const f of fs.readdirSync(dir)) if (/\.(h|cpp|properties)$/.test(f)) files[f] = fs.readFileSync(path.join(dir, f), 'utf8');
-  await p.evaluate(f => __banco.saveLibrary({ name: 'LiquidCrystal_I2C', version: '1.1.2', files: f, headers: ['LiquidCrystal_I2C.h'], enabled: true }), files);
-  await p.evaluate(() => __banco.compileAndRun()); await waitRun(); await p.waitForTimeout(1500);
+  await ex('i2c'); await p.waitForTimeout(1500); // LiquidCrystal_I2C ya viene incluida
   lcd = await p.evaluate(() => { const m = [...__banco.lcdModels.values()][0]; let t = ''; for (let r = 0; r < 2; r++) { for (let c = 0; c < 16; c++) t += String.fromCharCode(m.charAt(c, r)); t += '\n'; } return t; });
-  check(/Banco Uno \+ I2C/.test(lcd) && /t = \d/.test(lcd), 'i2c con librería: ' + JSON.stringify(lcd));
+  check(/RyM Simu \+ I2C/.test(lcd) && /t = \d/.test(lcd), 'i2c (librería incluida): ' + JSON.stringify(lcd));
   await p.click('[data-tab="libs"]'); await p.waitForTimeout(300);
   await p.screenshot({ path: path.join(OUT, 'i2c.png') });
   await p.click('[data-tab="code"]');

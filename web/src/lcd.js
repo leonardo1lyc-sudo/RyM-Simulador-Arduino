@@ -50,6 +50,7 @@ export class HD44780 {
   }
   cursorPos(){
     if (this.target !== 'dd') return null;
+    if (this.rows === 4) { const hi = this.ac >= 0x40, o = (this.ac & 0x3F); const row = (hi ? 1 : 0) + (o >= 0x14 ? 2 : 0), col = o % 0x14; return col < this.cols ? { col, row } : null; }
     const row = this.ac >= 0x40 ? 1 : 0; const col = ((this.ac & 0x3F) - this.scroll + 40) % 40;
     return col < this.cols ? { col, row } : null;
   }
@@ -73,8 +74,9 @@ export class I2CBus {
     this.twi = twi; this.devices = []; this.current = null; this.writing = true;
     twi.eventHandler = this;
   }
-  start(){ this.twi.completeStart(); }
-  stop(){ this.current = null; this.twi.completeStop(); }
+  end(){ if (this.current && this.current.end) this.current.end(); } // fin de la transacción (STOP o START repetido)
+  start(){ this.end(); this.current = null; this.twi.completeStart(); }
+  stop(){ this.end(); this.current = null; this.twi.completeStop(); }
   connectToSlave(addr, write){
     this.current = this.devices.find(d => d.address === addr && d.ready()) || null;
     this.writing = write;

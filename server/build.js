@@ -31,6 +31,7 @@ export const BOARDS = {
   esp32: { name: 'ESP32 DevKit', mcu: 'atmega2560', define: 'ARDUINO_ESP32_DEV', esp32: true, flashMax: 253952, ramMax: 8192,
     coreRoot: path.join(VENDOR, 'esp32-core'), variantDir: path.join(ESP32, 'variant') },
 };
+BOARDS.dip328 = { ...BOARDS.uno, name: 'ATmega328P (Arduino casero)' }; // mismo chip y núcleo que el Uno
 BOARDS.esp32cam = BOARDS.esp32; // la ESP32-CAM usa el mismo chip y la misma numeración (comparten el núcleo compilado)
 BOARDS.esp32s3 = { ...BOARDS.esp32, name: 'ESP32-S3 DevKitC-1', define: 'ARDUINO_ESP32S3_DEV', target: 'ESP32S3', variantDir: path.join(ESP32, 'variant-s3') };
 BOARDS.esp32c3 = { ...BOARDS.esp32, name: 'ESP32-C3 DevKitM-1', define: 'ARDUINO_ESP32C3_DEV', target: 'ESP32C3', variantDir: path.join(ESP32, 'variant-c3') };

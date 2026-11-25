@@ -411,4 +411,4 @@ export const KITS3 = {
     },
   },
 };
-export { CARDS };
+export { CARDS, newCard, crcA };

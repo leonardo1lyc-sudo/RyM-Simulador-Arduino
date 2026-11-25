@@ -6,6 +6,8 @@ import { KITS3 } from './kits3.js';
 import { KITS4 } from './kits4.js';
 import { KITS5 } from './kits5.js';
 import { KITS6 } from './kits6.js';
+import { KITS7 } from './kits7.js';
+import { KITS8 } from './kits8.js';
 export const LED_COLORS = {
   rojo:    { c: '#ff3b30', off: '#8a2a24', vf: 1.8 },
   naranja: { c: '#ff8a1f', off: '#8a4a1a', vf: 1.9 },
@@ -141,7 +143,7 @@ export const TYPES = {
     elec(c, T, E){ E.res(T('p'), T('n'), 1000); },
   },
   servo: {
-    label: 'Servo', prefix: 'SERVO', cat: 'Salidas',
+    label: 'Servo', prefix: 'SERVO', cat: 'Salidas', servo: true,
     terms: { gnd: { x: -72, y: -14, ...dir(-1, 0), name: 'GND (marrón)' }, vcc: { x: -72, y: 0, ...dir(-1, 0), name: 'V+ (rojo)' }, sig: { x: -72, y: 14, ...dir(-1, 0), name: 'señal (naranja)' } },
     box: [-74, -36, 134, 72], props: () => ({}),
     svg(c){
@@ -176,19 +178,36 @@ export const TYPES = {
     },
     elec(c, T, E){ E.res(T('VCC'), T('GND'), 5000); E.res(T('SDA'), T('VCC'), 10000); E.res(T('SCL'), T('VCC'), 10000); },
   },
-  ...MODULES, ...KITS, ...KITS2, ...KITS3, ...KITS4, ...KITS5, ...KITS6,
+  lcd2004: {
+    label: 'LCD 20×4 I2C', prefix: 'LCD', cat: 'Pantallas',
+    terms: { GND: { x: -196, y: -21, ...dir(-1, 0), name: 'GND' }, VCC: { x: -196, y: -7, ...dir(-1, 0), name: 'VCC (5 V)' }, SDA: { x: -196, y: 7, ...dir(-1, 0), name: 'SDA (A4; 20 en el Mega)' }, SCL: { x: -196, y: 21, ...dir(-1, 0), name: 'SCL (A5; 21 en el Mega)' } },
+    box: [-198, -110, 372, 214], props: () => ({ address: 0x27, color: 'azul' }),
+    options: [{ prop: 'color', label: 'Color', values: [['azul', 'Azul (letras blancas)'], ['verde', 'Verde (letras oscuras)']] }],
+    svg(c){
+      let s = `<rect x="-172" y="-102" width="344" height="196" rx="6" fill="#1f6b3a" stroke="#14462a"/>`;
+      for (const [x, y] of [[-162, -92], [162, -92], [-162, 84], [162, 84]]) s += `<circle cx="${x}" cy="${y}" r="6" fill="var(--bg)" stroke="#c9b26b" stroke-width="1.5"/>`;
+      s += `<rect x="-158" y="-80" width="316" height="152" rx="4" fill="#111"/>`;
+      s += `<g data-lcd="${c.id}"><rect data-lcdbg="${c.id}" x="-150" y="-70" width="300" height="132" rx="2" fill="#0f1d44"/><g data-lcdtxt="${c.id}"></g></g>`;
+      s += `<rect x="-188" y="-32" width="22" height="64" rx="2" fill="#1d1d1d"/>`;
+      ['GND', 'VCC', 'SDA', 'SCL'].forEach((p, i) => { const y = -21 + i * 14; s += `<line x1="-196" y1="${y}" x2="-180" y2="${y}" stroke="#b9a35a" stroke-width="3"/><text x="-170" y="${y + 2.5}" font-size="7" fill="#e4f2e8" font-family="var(--f-code)">${p}</text>`; });
+      return s + label(0, 104, `${c.name} · 20×4 · I2C 0x${c.props.address.toString(16).toUpperCase()}`);
+    },
+    elec(c, T, E){ E.res(T('VCC'), T('GND'), 3000); E.res(T('SDA'), T('VCC'), 10000); E.res(T('SCL'), T('VCC'), 10000); },
+    readout: () => 'Librería LiquidCrystal_I2C: LiquidCrystal_I2C lcd(0x27, 20, 4); lcd.init(); lcd.backlight();\nFilas: setCursor(columna, fila) con fila de 0 a 3.',
+  },
+  ...MODULES, ...KITS, ...KITS2, ...KITS3, ...KITS4, ...KITS5, ...KITS6, ...KITS7, ...KITS8,
 };
 
 export const LIBRARY = [
-  { cat: 'Salidas', items: ['led', 'rgb', 'led2', 'traffic', 'laser', 'buzzer', 'buzza', 'buzzp', 'servo', 'motor', 'stepper', 'l298n'] },
+  { cat: 'Salidas', items: ['led', 'rgb', 'led2', 'traffic', 'laser', 'buzzer', 'buzza', 'buzzp', 'speaker', 'pam8610', 'servo', 'mg996r', 'motor', 'ttmotor', 'stepper', 'l298n'] },
   { cat: 'Tiras y aros LED', items: ['neostrip', 'neoring', 'rgbstrip', 'rgbring'] },
   { cat: 'Relés', items: ['relay', 'relay2', 'relay4', 'relay8'] },
   { cat: 'Entradas', items: ['btn', 'kybtn', 'touch', 'sw', 'pot', 'joy', 'keypad', 'encoder'] },
-  { cat: 'Sensores', items: ['sr04', 'irobst', 'pir', 'dht', 'ds18b20', 'soil', 'rain', 'water', 'ntc', 'tempd', 'ldr', 'ldrmod', 'flame', 'gas', 'sound', 'tilt', 'knock', 'reed', 'hall', 'hallan', 'line'] },
-  { cat: 'Pantallas', items: ['lcd', 'lcdi2c', 'oled', 'max7219', 'seg7', 'tm1637'] },
-  { cat: 'Comunicación', items: ['hc05', 'irrx', 'irremote'] },
-  { cat: 'Módulos', items: ['ds1302', 'rc522'] },
-  { cat: 'Pasivos y energía', items: ['res', 'cap', 'ecap', 'battery', 'vreg'] },
+  { cat: 'Sensores', items: ['sr04', 'irobst', 'pir', 'dht', 'ds18b20', 'soil', 'rain', 'water', 'ntc', 'tempd', 'ldr', 'ldrmod', 'flame', 'gas', 'sound', 'tilt', 'knock', 'reed', 'hall', 'hallan', 'line', 'tcs3200', 'mpu6050'] },
+  { cat: 'Pantallas', items: ['lcd', 'lcdi2c', 'lcd2004', 'oled', 'ili9341', 'max7219', 'seg7', 'tm1637'] },
+  { cat: 'Comunicación', items: ['hc05', 'sim800l', 'pn532', 'rftx', 'rfrx', 'irrx', 'irremote'] },
+  { cat: 'Módulos', items: ['ds1302', 'ds3231', 'rc522', 'sdcard', 'dfplayer'] },
+  { cat: 'Pasivos y energía', items: ['res', 'cap', 'ecap', 'xtal', 'battery', 'vreg', 'hdrm', 'hdrf', 'bornera'] },
   { cat: 'Protoboards', items: ['bb830', 'bb400', 'bb170'] },
   { cat: 'Semiconductores', items: ['diode', 'zener', 'npn', 'pnp', 'mosfet'] },
 ];
