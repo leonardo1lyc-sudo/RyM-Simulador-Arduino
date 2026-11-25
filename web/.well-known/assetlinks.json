@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.rym.bancouno",
+      "sha256_cert_fingerprints": [
+        "82:3B:D9:CF:F0:44:75:63:DD:B1:B3:CB:CB:1A:74:90:67:D0:9B:CB:54:4D:75:9D:30:1D:37:42:B4:A3:8B:7F"
+      ]
+    }
+  }
+]

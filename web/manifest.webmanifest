@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "Banco Uno · Simulador de Arduino",
+  "short_name": "Banco Uno",
+  "description": "Simulador de Arduino Uno, Nano, Mega y ESP32 con emulación AVR real, librerías y componentes interactivos.",
+  "lang": "es",
+  "start_url": "/?fuente=app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f1ea",
+  "theme_color": "#0d6b78",
+  "categories": ["education", "productivity", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
