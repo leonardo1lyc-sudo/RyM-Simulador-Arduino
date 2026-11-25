@@ -36,6 +36,10 @@ button{cursor:pointer}
 .logo{display:flex;align-items:center;gap:10px;min-width:0}
 .logo h1{font-size:17px;margin:0;font-weight:700;letter-spacing:-.01em}
 .logo small{display:block;color:var(--muted);font-size:12px}
+.social{display:flex;gap:4px;margin-left:4px}
+.social a{display:inline-flex;width:30px;height:30px;align-items:center;justify-content:center;border-radius:8px;color:var(--muted);border:1px solid transparent}
+.social a:hover,.social a:focus-visible{color:var(--accent);border-color:var(--line);background:var(--panel2)}
+.social svg{width:18px;height:18px}
 .sim-ctl{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 12px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
 .btn:hover{border-color:var(--muted)}
