@@ -1,7 +1,7 @@
 // Service worker de Banco Uno: permite instalar la web como app y abrirla sin conexión.
 // La compilación (/api/*) siempre va a la red: necesita el servidor.
-const CACHE = 'banco-uno-v1';
-const SHELL = ['./', 'index.html', 'style.css', 'dist/app.js', 'favicon.svg', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'rym-simu-v2';
+const SHELL = ['./', 'index.html', 'icons/logo-rym.png', 'style.css', 'dist/app.js', 'favicon.svg', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

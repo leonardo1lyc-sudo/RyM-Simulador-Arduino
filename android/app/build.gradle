@@ -22,9 +22,9 @@ android {
             hostName       : host,
             defaultUrl     : "https://${host}/?fuente=app",
             launcherName   : 'RyM Simu',
-            themeColor     : '#0d6b78',
-            navColor       : '#f4f1ea',
-            backgroundColor: '#f4f1ea',
+            themeColor     : '#0f1416',
+            navColor       : '#0f1416',
+            backgroundColor: '#0f1416',
         ]
     }
 
